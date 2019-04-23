@@ -1,6 +1,8 @@
 import copy
 import numpy as np
 
+from typing import Optional
+
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Dense, Flatten, Conv2D, Reshape
 import tensorflow.keras as keras
@@ -86,7 +88,7 @@ class MobileDetectnetModel(Model):
     @staticmethod
     def create(input_width: int = 224,
                input_height: int = 224,
-               weights: str = "imagenet"):
+               weights: Optional[str] = "imagenet"):
 
         mobilenet = keras.applications.mobilenet.MobileNet(include_top=False,
                                                            input_shape=(input_height, input_width, 3),
