@@ -145,15 +145,21 @@ class MobileDetectnetSequence(Sequence):
     epochs=('Number of epochs to train', 'option', 'E', int),
     train_path=('Path to the train folder which contains both an images and labels folder with KITTI labels', 'option', 'T', str),
     val_path=('Path to the validation folder which contains both an images and labels folder with KITTI labels', 'option', 'V', str),
-    metric=('Loss metric to minimize', 'option', 'L', str)
+    metric=('Loss metric to minimize', 'option', 'L', str),
+    weights=('Weights file to start with', 'option', 'W', str)
 )
 def main(batch_size: int = 24,
          epochs: int = 500,
          train_path: str = 'train',
          val_path: str = 'val',
-         metric='val_bboxes_loss'):
+         metric='val_bboxes_loss',
+         weights=None):
 
     mobiledetectnet = MobileDetectnetModel.create()
+
+    if weights is not None:
+        mobiledetectnet.load_weights(weights)
+
     mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
     mobiledetectnet.compile(optimizer=Adam(lr=0.0001, decay=0.000001),
                             loss=[mean_squared_error, mean_absolute_error])
