@@ -63,7 +63,7 @@ class MobileDetectnetSequence(Sequence):
         input_image = np.zeros((self.batch_size, self.resize_height, self.resize_width, 3))
         output_coverage_map = np.zeros((self.batch_size, self.coverage_height, self.coverage_width))
 
-        # We will resize to 4 channels
+        # We will resize to 4 channels later
         output_bboxes = np.zeros((self.batch_size, self.coverage_height, self.coverage_width, 5))
 
         for i in range(0, self.batch_size):

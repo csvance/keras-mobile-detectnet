@@ -86,8 +86,6 @@ class MobileDetectnetModel(Model):
     @staticmethod
     def create(input_width: int = 224,
                input_height: int = 224,
-               coverage_width: int = 7,
-               coverage_height: int = 7,
                weights: str = "imagenet"):
 
         mobilenet = keras.applications.mobilenet.MobileNet(include_top=False,
@@ -97,7 +95,7 @@ class MobileDetectnetModel(Model):
 
         new_output = mobilenet.get_layer('conv_pw_13_relu').output
 
-        coverage = Conv2D(1, 1, activation='relu', name='coverage')(new_output)
+        coverage = Conv2D(1, 1, activation='sigmoid', name='coverage')(new_output)
         conv_coverage1 = Conv2D(2, 2, activation='relu', padding='same', name='conv_coverage1')(coverage)
         conv_coverage2 = Conv2D(4, 2, activation='relu', padding='same', name='conv_coverage2')(conv_coverage1)
         bboxes = Conv2D(4, 2, activation='linear', padding='same', name='bboxes')(conv_coverage2)
