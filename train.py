@@ -183,9 +183,11 @@ def main(batch_size: int = 24,
         mobiledetectnet.load_weights(weights)
 
     if optimizer == "adam":
-        opt = Adam(lr=learning_rate, decay=learning_decay*(learning_rate / epochs) )
+        opt = Adam(lr=learning_rate, decay=learning_decay*(learning_rate / epochs))
     elif optimizer == "sgd":
-        opt = SGD(lr=learning_rate, momentum=0.9, decay=learning_decay*(learning_rate / epochs) )
+        opt = SGD(lr=learning_rate, momentum=0.9, decay=learning_decay*(learning_rate / epochs))
+    else:
+        raise ValueError("Invalid optimizer")
 
     mobiledetectnet.compile(optimizer=opt,
                             loss=[mean_absolute_error, mean_absolute_error])
@@ -201,7 +203,7 @@ def main(batch_size: int = 24,
                                   epochs=epochs,
                                   steps_per_epoch=len(train_seq),
                                   validation_steps=len(val_seq),
-                                  callbacks=[checkpoint, print_weights],
+                                  callbacks=[checkpoint],
                                   use_multiprocessing=True, workers=8)
 
 
