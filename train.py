@@ -7,7 +7,6 @@ import imgaug as ia
 from imgaug import augmenters as iaa
 
 import tensorflow.keras as keras
-from tensorflow.keras.losses import mean_absolute_error, mean_squared_error
 from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.utils import Sequence
@@ -46,8 +45,8 @@ class MobileDetectnetSequence(Sequence):
                 iaa.Sometimes(0.5, iaa.Fliplr(1.0)),
                 iaa.SomeOf((0, 4), [
                     iaa.AddToHueAndSaturation((-20, 20)),
-                    iaa.Affine(scale={"x": (0.8, 1.2), "y": (0.8, 1.2)}),
-                    iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
+                    #iaa.Affine(scale={"x": (0.8, 1.2), "y": (0.8, 1.2)}),
+                    #iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
                     iaa.GaussianBlur(sigma=(0, 3.0))
                 ])
             ])
@@ -79,8 +78,8 @@ class MobileDetectnetSequence(Sequence):
                                                                       label=self.labels[idx * self.batch_size + i])
 
             image_aug = seq_det.augment_image(image)
-
             bboxes_aug = seq_det.augment_bounding_boxes(bboxes)
+
             segmap_aug = seq_det.augment_segmentation_maps(segmap)
 
             output_segmap = segmap_aug.arr.astype(np.float32)
@@ -93,23 +92,28 @@ class MobileDetectnetSequence(Sequence):
 
             # Put each predicted bbox in its center
             for bbox in bboxes_aug.bounding_boxes:
-
                 for y in range(0, self.coverage_height):
                     for x in range(0, self.coverage_width):
-                        if (self.coverage_width * bbox.x1 / self.resize_width) <= x <= (self.coverage_width * bbox.x2 / self.resize_width):
-                            if (self.coverage_width * bbox.y1 / self.resize_height) <= y <= (self.coverage_width * bbox.y2 / self.resize_height):
 
-                                x_in = max(0, min(x+1, bbox.x2) - max(x, bbox.x1))
-                                y_in = max(0, min(y+1, bbox.y2) - max(y, bbox.y1))
-                                area_in = x_in*y_in
+                        bx1 = (self.coverage_width * bbox.x1 / self.resize_width)
+                        bx2 = (self.coverage_width * bbox.x2 / self.resize_width)
 
-                                # Prioritize the most dominant box in a region
-                                if area_in > output_bboxes[i, y, x, 4]:
-                                    output_bboxes[i, y, x, 0] = bbox.x1 / self.resize_width
-                                    output_bboxes[i, y, x, 1] = bbox.y1 / self.resize_height
-                                    output_bboxes[i, y, x, 2] = bbox.x2 / self.resize_width
-                                    output_bboxes[i, y, x, 3] = bbox.y2 / self.resize_height
-                                    output_bboxes[i, y, x, 4] = area_in
+                        by1 = (self.coverage_height * bbox.y1 / self.resize_height)
+                        by2 = (self.coverage_height * bbox.y2 / self.resize_height)
+
+                        if bx1 <= x <= bx2 and by1 <= x <= by2:
+
+                            x_in = max(0, min(x+1, bx2) - max(x, bx1))
+                            y_in = max(0, min(y+1, by2) - max(y, by1))
+                            area_in = x_in*y_in
+
+                            # Prioritize the most dominant box in a region
+                            if area_in > output_bboxes[i, y, x, 4]:
+                                output_bboxes[i, y, x, 0] = bbox.x1 / self.resize_width
+                                output_bboxes[i, y, x, 1] = bbox.y1 / self.resize_height
+                                output_bboxes[i, y, x, 2] = bbox.x2 / self.resize_width
+                                output_bboxes[i, y, x, 3] = bbox.y2 / self.resize_height
+                                output_bboxes[i, y, x, 4] = area_in
 
         # Remove fifth channel
         output_bboxes = output_bboxes[:, :, :, 0:4]
@@ -190,7 +194,7 @@ def main(batch_size: int = 24,
         raise ValueError("Invalid optimizer")
 
     mobiledetectnet.compile(optimizer=opt,
-                            loss=[mean_absolute_error, mean_absolute_error])
+                            loss=['binary_crossentropy', 'mean_absolute_error'])
 
     train_seq = MobileDetectnetSequence(train_path, augment=True, batch_size=batch_size)
     val_seq = MobileDetectnetSequence(val_path, augment=False, batch_size=batch_size)

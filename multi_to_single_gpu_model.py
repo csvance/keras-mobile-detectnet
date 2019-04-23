@@ -1,6 +1,9 @@
 import plac
 from model import MobileDetectnetModel
 import tensorflow.keras as keras
+import os
+
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
 @plac.annotations(

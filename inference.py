@@ -18,7 +18,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
     weights_path=("Model weights", 'positional', None, str),
     test_path=("Test images path", 'option', 'I', str)
 )
-def main(inference_type: str = "FP16",
+def main(inference_type: str = "K",
          batch_size: int = 1,
          test_size: int = 1,
          test_path: str = None,
@@ -50,12 +50,17 @@ def main(inference_type: str = "FP16",
 
         x_test = np.array(images_input)
 
-    if inference_type == 'TF':
+    important = model.get_layer('bboxes').get_weights()
+
+    if inference_type == 'K':
+        t0 = time.time()
+        coverage, bboxes = model.predict(x_test)
+        t1 = time.time()
+    elif inference_type == 'TF':
         tf_engine = model.tf_engine()
         t0 = time.time()
         bboxes, coverage = tf_engine.infer(x_test)
         t1 = time.time()
-
     elif inference_type == 'FP32':
         tftrt_engine = model.tftrt_engine(precision='FP32', batch_size=batch_size)
         t0 = time.time()
@@ -78,9 +83,12 @@ def main(inference_type: str = "FP16",
 
     if images_full is not None:
         for idx in range(0, len(images_full)):
+
+            print(np.max(bboxes[idx]))
+
             for y in range(0, 7):
                 for x in range(0, 7):
-                    if coverage[idx, y, x] > 0.5:
+                    if coverage[idx, y, x] > 0:
                         cv2.rectangle(images_input[idx],
                                       (int(bboxes[idx, y, x, 0]*test_dims[1]), int(bboxes[idx, y, x, 1]*test_dims[0])),
                                       (int(bboxes[idx, y, x, 2]*test_dims[1]), int(bboxes[idx, y, x, 3]*test_dims[0])),
