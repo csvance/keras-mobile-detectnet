@@ -11,7 +11,6 @@ from tensorflow.keras.losses import mean_absolute_error, mean_squared_error
 from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.utils import Sequence
-from tensorflow.keras.callbacks import LambdaCallback
 
 from model import MobileDetectnetModel
 
@@ -158,14 +157,13 @@ class MobileDetectnetSequence(Sequence):
 @plac.annotations(
     batch_size=('The training batch size', 'option', 'B', int),
     epochs=('Number of epochs to train', 'option', 'E', int),
-    train_path=(
-    'Path to the train folder which contains both an images and labels folder with KITTI labels', 'option', 'T', str),
-    val_path=(
-    'Path to the validation folder which contains both an images and labels folder with KITTI labels', 'option', 'V',
-    str),
+    train_path=('Path to the train folder which contains both an images and labels folder with KITTI labels', 'option', 'T', str),
+    val_path=('Path to the validation folder which contains both an images and labels folder with KITTI labels', 'option', 'V', str),
     metric=('Loss metric to minimize', 'option', 'L', str),
     weights=('Weights file to start with', 'option', 'W', str),
-    learning_rate=('Base learning rate for the training process', 'option', 'l', float)
+    learning_rate=('Base learning rate for the training process', 'option', 'l', float),
+    learning_decay=('By the end of the training, the learning rate will be equal to the initial times this', 'option', 'd', float),
+    optimizer=('Which optimizer to use. Valid options include adam and sgd', 'option', 'o', str)
 )
 def main(batch_size: int = 24,
          epochs: int = 500,
@@ -173,13 +171,9 @@ def main(batch_size: int = 24,
          val_path: str = 'val',
          metric='val_bboxes_loss',
          weights=None,
-         learning_rate: float = 0.0001):
-
-    def stats(arr):
-        print("AVG: %f" % np.mean(arr))
-        print("MED: %f" % np.median(arr))
-        print("RANGE: %f:%f" % (np.min(arr), np.max(arr)))
-        print("STD: %f" % np.std(arr))
+         learning_rate: float = 0.0001,
+         learning_decay: float = 0.5,
+         optimizer: str = "adam"):
 
     mobiledetectnet = MobileDetectnetModel.create()
     mobiledetectnet.summary()
@@ -188,7 +182,12 @@ def main(batch_size: int = 24,
     if weights is not None:
         mobiledetectnet.load_weights(weights)
 
-    mobiledetectnet.compile(optimizer=Adam(lr=learning_rate, decay=(learning_rate / epochs) / 2),
+    if optimizer == "adam":
+        opt = Adam(lr=learning_rate, decay=learning_decay*(learning_rate / epochs) )
+    elif optimizer == "sgd":
+        opt = SGD(lr=learning_rate, momentum=0.9, decay=learning_decay*(learning_rate / epochs) )
+
+    mobiledetectnet.compile(optimizer=opt,
                             loss=[mean_absolute_error, mean_absolute_error])
 
     train_seq = MobileDetectnetSequence(train_path, augment=True, batch_size=batch_size)
@@ -196,10 +195,6 @@ def main(batch_size: int = 24,
 
     filepath = "weights-improvement-{epoch:02d}-{%s:.4f}.hdf5" % metric
     checkpoint = ModelCheckpoint(filepath, monitor=metric, verbose=1, save_best_only=True, mode='min')
-
-    print_weights = LambdaCallback(on_epoch_end=lambda batch, logs: stats(mobiledetectnet.layers[-3].get_layer('bboxes').get_weights()[0]))
-
-    stats(mobiledetectnet.layers[-3].get_layer('bboxes').get_weights()[0])
 
     mobiledetectnet.fit_generator(train_seq,
                                   validation_data=val_seq,
