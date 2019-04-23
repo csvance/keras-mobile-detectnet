@@ -89,6 +89,7 @@ class MobileDetectnetModel(Model):
                coverage_width: int = 7,
                coverage_height: int = 7,
                weights: str = "imagenet"):
+
         mobilenet = keras.applications.mobilenet.MobileNet(include_top=False,
                                                            input_shape=(input_height, input_width, 3),
                                                            weights=weights,
@@ -96,11 +97,10 @@ class MobileDetectnetModel(Model):
 
         new_output = mobilenet.get_layer('conv_pw_13_relu').output
 
-        coverage = Conv2D(1, 1, activation='sigmoid', name='coverage')(new_output)
-        flatten = Flatten()(coverage)
-        bboxes_flattened = Dense(coverage_height * coverage_width * 4, activation='linear', name='bboxes_flattened')(
-            flatten)
-        bboxes = Reshape((coverage_width, coverage_height, 4), name='bboxes')(bboxes_flattened)
+        coverage = Conv2D(1, 1, activation='relu', name='coverage')(new_output)
+        conv_coverage1 = Conv2D(2, 2, activation='relu', padding='same', name='conv_coverage1')(coverage)
+        conv_coverage2 = Conv2D(4, 2, activation='relu', padding='same', name='conv_coverage2')(conv_coverage1)
+        bboxes = Conv2D(4, 2, activation='linear', padding='same', name='bboxes')(conv_coverage2)
 
         return MobileDetectnetModel(inputs=mobilenet.input,
                                     outputs=[coverage, bboxes])

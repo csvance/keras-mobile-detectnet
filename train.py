@@ -8,9 +8,10 @@ from imgaug import augmenters as iaa
 
 import tensorflow.keras as keras
 from tensorflow.keras.losses import mean_absolute_error, mean_squared_error
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.utils import Sequence
+from tensorflow.keras.callbacks import LambdaCallback
 
 from model import MobileDetectnetModel
 
@@ -58,9 +59,12 @@ class MobileDetectnetSequence(Sequence):
         return int(np.floor(len(self.images) / float(self.batch_size)))
 
     def __getitem__(self, idx):
+
         input_image = np.zeros((self.batch_size, self.resize_height, self.resize_width, 3))
         output_coverage_map = np.zeros((self.batch_size, self.coverage_height, self.coverage_width))
-        output_bboxes = np.zeros((self.batch_size, self.coverage_height, self.coverage_width, 4))
+
+        # We will resize to 4 channels
+        output_bboxes = np.zeros((self.batch_size, self.coverage_height, self.coverage_width, 5))
 
         for i in range(0, self.batch_size):
 
@@ -90,15 +94,26 @@ class MobileDetectnetSequence(Sequence):
 
             # Put each predicted bbox in its center
             for bbox in bboxes_aug.bounding_boxes:
-                center_x = min(int(np.floor(bbox.center_x / self.resize_width * self.coverage_width)),
-                               self.coverage_width - 1)
-                center_y = min(int(np.floor(bbox.center_y / self.resize_height * self.coverage_height)),
-                               self.coverage_height - 1)
 
-                output_bboxes[i, center_y, center_x, 0] = bbox.x1 / self.resize_width
-                output_bboxes[i, center_y, center_x, 1] = bbox.y1 / self.resize_height
-                output_bboxes[i, center_y, center_x, 2] = bbox.x2 / self.resize_width
-                output_bboxes[i, center_y, center_x, 3] = bbox.y2 / self.resize_height
+                for y in range(0, self.coverage_height):
+                    for x in range(0, self.coverage_width):
+                        if (self.coverage_width * bbox.x1 / self.resize_width) <= x <= (self.coverage_width * bbox.x2 / self.resize_width):
+                            if (self.coverage_width * bbox.y1 / self.resize_height) <= y <= (self.coverage_width * bbox.y2 / self.resize_height):
+
+                                x_in = max(0, min(x+1, bbox.x2) - max(x, bbox.x1))
+                                y_in = max(0, min(y+1, bbox.y2) - max(y, bbox.y1))
+                                area_in = x_in*y_in
+
+                                # Prioritize the most dominant box in a region
+                                if area_in > output_bboxes[i, y, x, 4]:
+                                    output_bboxes[i, y, x, 0] = bbox.x1 / self.resize_width
+                                    output_bboxes[i, y, x, 1] = bbox.y1 / self.resize_height
+                                    output_bboxes[i, y, x, 2] = bbox.x2 / self.resize_width
+                                    output_bboxes[i, y, x, 3] = bbox.y2 / self.resize_height
+                                    output_bboxes[i, y, x, 4] = area_in
+
+        # Remove fifth channel
+        output_bboxes = output_bboxes[:, :, :, 0:4]
 
         return input_image, [
             output_coverage_map.reshape((self.batch_size, self.coverage_height, self.coverage_width, 1)),
@@ -143,26 +158,38 @@ class MobileDetectnetSequence(Sequence):
 @plac.annotations(
     batch_size=('The training batch size', 'option', 'B', int),
     epochs=('Number of epochs to train', 'option', 'E', int),
-    train_path=('Path to the train folder which contains both an images and labels folder with KITTI labels', 'option', 'T', str),
-    val_path=('Path to the validation folder which contains both an images and labels folder with KITTI labels', 'option', 'V', str),
+    train_path=(
+    'Path to the train folder which contains both an images and labels folder with KITTI labels', 'option', 'T', str),
+    val_path=(
+    'Path to the validation folder which contains both an images and labels folder with KITTI labels', 'option', 'V',
+    str),
     metric=('Loss metric to minimize', 'option', 'L', str),
-    weights=('Weights file to start with', 'option', 'W', str)
+    weights=('Weights file to start with', 'option', 'W', str),
+    learning_rate=('Base learning rate for the training process', 'option', 'l', float)
 )
 def main(batch_size: int = 24,
          epochs: int = 500,
          train_path: str = 'train',
          val_path: str = 'val',
          metric='val_bboxes_loss',
-         weights=None):
+         weights=None,
+         learning_rate: float = 0.0001):
+
+    def stats(arr):
+        print("AVG: %f" % np.mean(arr))
+        print("MED: %f" % np.median(arr))
+        print("RANGE: %f:%f" % (np.min(arr), np.max(arr)))
+        print("STD: %f" % np.std(arr))
 
     mobiledetectnet = MobileDetectnetModel.create()
+    mobiledetectnet.summary()
+    mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
 
     if weights is not None:
         mobiledetectnet.load_weights(weights)
 
-    mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
-    mobiledetectnet.compile(optimizer=Adam(lr=0.0001, decay=0.000001),
-                            loss=[mean_squared_error, mean_absolute_error])
+    mobiledetectnet.compile(optimizer=Adam(lr=learning_rate, decay=(learning_rate / epochs) / 2),
+                            loss=[mean_absolute_error, mean_absolute_error])
 
     train_seq = MobileDetectnetSequence(train_path, augment=True, batch_size=batch_size)
     val_seq = MobileDetectnetSequence(val_path, augment=False, batch_size=batch_size)
@@ -170,13 +197,17 @@ def main(batch_size: int = 24,
     filepath = "weights-improvement-{epoch:02d}-{%s:.4f}.hdf5" % metric
     checkpoint = ModelCheckpoint(filepath, monitor=metric, verbose=1, save_best_only=True, mode='min')
 
+    print_weights = LambdaCallback(on_epoch_end=lambda batch, logs: stats(mobiledetectnet.layers[-3].get_layer('bboxes').get_weights()[0]))
+
+    stats(mobiledetectnet.layers[-3].get_layer('bboxes').get_weights()[0])
+
     mobiledetectnet.fit_generator(train_seq,
-                                            validation_data=val_seq,
-                                            epochs=epochs,
-                                            steps_per_epoch=len(train_seq),
-                                            validation_steps=len(val_seq),
-                                            callbacks=[checkpoint],
-                                            use_multiprocessing=True, workers=8)
+                                  validation_data=val_seq,
+                                  epochs=epochs,
+                                  steps_per_epoch=len(train_seq),
+                                  validation_steps=len(val_seq),
+                                  callbacks=[checkpoint, print_weights],
+                                  use_multiprocessing=True, workers=8)
 
 
 if __name__ == '__main__':
