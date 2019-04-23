@@ -117,3 +117,8 @@ class MobileDetectnetModel(Model):
 
     def tftrt_engine(self, batch_size: int = 1, precision: str = 'FP16'):
         return MobileDetectnetTFTRTEngine(self.freeze(), batch_size=batch_size, precision=precision)
+
+
+if __name__ == '__main__':
+    model = MobileDetectnetModel.create()
+    model.plot()
