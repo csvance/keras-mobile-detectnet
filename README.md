@@ -53,4 +53,3 @@ MobileDetectNet uses the KITTI label format and directory structure. See [here f
 [sgdr]: https://arxiv.org/abs/1608.03983
 [kitti]: https://github.com/NVIDIA/DIGITS/tree/master/digits/extensions/data/objectDetection
 [detectnet]: https://devblogs.nvidia.com/detectnet-deep-neural-network-object-detection-digits/
-[ssd]: https://arxiv.org/abs/1512.02325
