@@ -187,7 +187,7 @@ class MobileDetectnetSequence(Sequence):
     workers=('Number of fit_generator workers', 'option', 'w', int)
 )
 def main(batch_size: int = 24,
-         epochs: int = 500,
+         epochs: int = 630,
          train_path: str = 'train',
          val_path: str = 'val',
          weights=None,
