@@ -31,6 +31,7 @@ def main(inference_type: str = "K",
     test_dims = [int(d) for d in input_dims.split(",")]
 
     images_full = None
+    images_input = None
 
     if test_path is None:
         test_dims.insert(0, test_size)
@@ -49,8 +50,6 @@ def main(inference_type: str = "K",
                 images_input.append(image_input)
 
         x_test = np.array(images_input)
-
-    important = model.get_layer('bboxes').get_weights()
 
     if inference_type == 'K':
         t0 = time.time()
@@ -86,13 +85,24 @@ def main(inference_type: str = "K",
 
             print(np.max(bboxes[idx]))
 
+            rectangles = []
             for y in range(0, 7):
                 for x in range(0, 7):
-                    if coverage[idx, y, x] > 0:
-                        cv2.rectangle(images_input[idx],
-                                      (int(bboxes[idx, y, x, 0]*test_dims[1]), int(bboxes[idx, y, x, 1]*test_dims[0])),
-                                      (int(bboxes[idx, y, x, 2]*test_dims[1]), int(bboxes[idx, y, x, 3]*test_dims[0])),
-                                      (0, 1, 0), 3)
+                    if coverage[idx, y, x] > 0.5:
+
+                        rect = [int(bboxes[idx, y, x, 0]*test_dims[1]),
+                                int(bboxes[idx, y, x, 1]*test_dims[0]),
+                                int(bboxes[idx, y, x, 2]*test_dims[1]),
+                                int(bboxes[idx, y, x, 3]*test_dims[0])]
+
+                        rectangles.append(rect)
+
+            rectangles, merges = cv2.groupRectangles(rectangles, 1)
+            for rect in rectangles:
+                cv2.rectangle(images_input[idx],
+                              (rect[0], rect[1]),
+                              (rect[2], rect[3]),
+                              (0, 1, 0), 3)
 
             plt.imshow(images_input[idx], alpha=1.0)
             plt.imshow(cv2.resize(coverage[idx].reshape((7, 7)), (224, 224)),  interpolation='nearest', alpha=0.5)

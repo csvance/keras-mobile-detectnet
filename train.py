@@ -45,8 +45,8 @@ class MobileDetectnetSequence(Sequence):
                 iaa.Sometimes(0.5, iaa.Fliplr(1.0)),
                 iaa.SomeOf((0, 4), [
                     iaa.AddToHueAndSaturation((-20, 20)),
-                    #iaa.Affine(scale={"x": (0.8, 1.2), "y": (0.8, 1.2)}),
-                    #iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
+                    iaa.Affine(scale={"x": (0.8, 1.2), "y": (0.8, 1.2)}),
+                    iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
                     iaa.GaussianBlur(sigma=(0, 3.0))
                 ])
             ])
@@ -167,7 +167,8 @@ class MobileDetectnetSequence(Sequence):
     weights=('Weights file to start with', 'option', 'W', str),
     learning_rate=('Base learning rate for the training process', 'option', 'l', float),
     learning_decay=('By the end of the training, the learning rate will be equal to the initial times this', 'option', 'd', float),
-    optimizer=('Which optimizer to use. Valid options include adam and sgd', 'option', 'o', str)
+    optimizer=('Which optimizer to use. Valid options include adam and sgd', 'option', 'o', str),
+    workers=('Number of fit_generator workers', 'option', 'w', int)
 )
 def main(batch_size: int = 24,
          epochs: int = 500,
@@ -177,7 +178,8 @@ def main(batch_size: int = 24,
          weights=None,
          learning_rate: float = 0.0001,
          learning_decay: float = 0.75,
-         optimizer: str = "adam"):
+         optimizer: str = "adam",
+         workers: int = 8):
 
     mobiledetectnet = MobileDetectnetModel.create()
     mobiledetectnet.summary()
@@ -207,7 +209,9 @@ def main(batch_size: int = 24,
                                   steps_per_epoch=len(train_seq),
                                   validation_steps=len(val_seq),
                                   callbacks=[checkpoint],
-                                  use_multiprocessing=True, workers=8)
+                                  use_multiprocessing=True,
+                                  workers=workers,
+                                  shuffle=True)
 
 
 if __name__ == '__main__':
