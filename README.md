@@ -5,7 +5,7 @@
 MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature extractor to predict a coverage map and bounding boxes. It was designed to be computationally efficient for deployment on embedded systems and easy to train with limited data. It was inspired by the design of [DetectNet][detectnet].
 
 ### Network Arcitecture
-```
+```python
         # Input: scaled from -1, to 1 to take advantage of transfer learning
         mobilenet = keras.applications.mobilenet.MobileNet(include_top=False,
                                                            input_shape=(224, 224, 3),
@@ -28,7 +28,7 @@ MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature 
 ### Training
 Training is done with [imgaug][imgaug] utilizing Keras [Sequences][sequence] for multicore preprocessing and online data augmentation:
 
-```
+```python
 iaa.Sequential([
                 iaa.Fliplr(0.5),
                 iaa.CropAndPad(px=(0, 112), sample_independently=False),
