@@ -17,7 +17,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
     input_dims=("Comma seperate input dimensions ie 224, 224, 3", 'option', 'D', str),
     weights_path=("Model weights", 'positional', None, str),
     test_path=("Test images path", 'option', 'I', str),
-    merge=("Merge detected regions", 'fag', 'M', bool)
+    merge=("Merge detected regions", 'flag', 'M', bool)
 )
 def main(inference_type: str = "K",
          batch_size: int = 1,
