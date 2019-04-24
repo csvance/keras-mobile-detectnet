@@ -190,7 +190,7 @@ def main(batch_size: int = 24,
     else:
         raise ValueError("Invalid optimizer")
 
-    mobiledetectnet.compile(optimizer=opt, loss=['mean_absolute_error', 'mean_absolute_error'])
+    mobiledetectnet.compile(optimizer=opt, loss=['mean_squared_error', 'mean_absolute_error'])
 
     train_seq = MobileDetectnetSequence(train_path, stage="train", batch_size=batch_size)
     val_seq = MobileDetectnetSequence(val_path, stage="val", batch_size=batch_size)
