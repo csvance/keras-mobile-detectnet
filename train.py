@@ -77,7 +77,7 @@ class MobileDetectnetSequence(Sequence):
                                        interpolation=cv2.INTER_AREA).astype(np.float32)[:, :, 1]
 
             # Work on building a batch
-            input_image[i] = (image_aug.astype(np.float32) / 127.5) - 1.
+            input_image[i] = (image_aug.astype(np.float32) / 127.5) - 1.  # "tf" style normalization
             output_coverage_map[i] = output_segmap
 
             # Put each predicted bbox in its center

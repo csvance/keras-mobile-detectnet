@@ -6,6 +6,7 @@ import plac
 import os
 import cv2
 import matplotlib.pyplot as plt
+from augment import create_augmenter
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -17,7 +18,8 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
     input_dims=("Comma seperate input dimensions ie 224, 224, 3", 'option', 'D', str),
     weights_path=("Model weights", 'positional', None, str),
     test_path=("Test images path", 'option', 'I', str),
-    merge=("Merge detected regions", 'flag', 'M', bool)
+    merge=("Merge detected regions", 'flag', 'M', bool),
+    stage=("Augmentation training stage", 'option', 's', str)
 )
 def main(inference_type: str = "K",
          batch_size: int = 1,
@@ -25,7 +27,8 @@ def main(inference_type: str = "K",
          test_path: str = None,
          input_dims: str = "224, 224, 3",
          weights_path: str = "mobiledetectnet.h5",
-         merge: bool = False):
+         merge: bool = False,
+         stage: str = "test"):
 
     model = MobileDetectnetModel.create(weights=None)
     model.load_weights(weights_path)
@@ -34,6 +37,8 @@ def main(inference_type: str = "K",
 
     images_full = None
     images_input = None
+
+    seq = create_augmenter(stage)
 
     if test_path is None:
         test_dims.insert(0, test_size)
@@ -46,10 +51,13 @@ def main(inference_type: str = "K",
             for file in f:
 
                 image_full = cv2.imread(os.path.join(r, file))
-                image_input = (cv2.resize(image_full, (test_dims[0], test_dims[1])).astype(np.float32) / 127.5) - 1
+                image_input = cv2.resize(image_full, (test_dims[0], test_dims[1]))
+
+                seq_det = seq.to_deterministic()
+                image_aug = (seq_det.augment_image(image_input).astype(np.float32) / 127.5) - 1.
 
                 images_full.append(image_full)
-                images_input.append(image_input)
+                images_input.append(image_aug)
 
         x_test = np.array(images_input)
 
@@ -88,7 +96,7 @@ def main(inference_type: str = "K",
             rectangles = []
             for y in range(0, 7):
                 for x in range(0, 7):
-                    if coverage[idx, y, x] > 0.5:
+                    if coverage[idx, y, x] > 0.9:
 
                         rect = [int(bboxes[idx, y, x, 0]*test_dims[1]),
                                 int(bboxes[idx, y, x, 1]*test_dims[0]),
@@ -106,7 +114,7 @@ def main(inference_type: str = "K",
                               (rect[2], rect[3]),
                               (0, 1, 0), 3)
 
-            plt.imshow(images_input[idx], alpha=1.0)
+            plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
             plt.imshow(cv2.resize(coverage[idx].reshape((7, 7)), (224, 224)),  interpolation='nearest', alpha=0.5)
             plt.show()
 

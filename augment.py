@@ -10,7 +10,7 @@ def create_augmenter(stage: str = "train"):
     if stage == "train":
         return iaa.Sequential([
         iaa.Fliplr(0.5),
-        iaa.CropAndPad(px=(112, 112), sample_independently=False),
+        iaa.CropAndPad(px=(0, 112), sample_independently=False),
         iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
         iaa.SomeOf((0, 3), [
             iaa.AddToHueAndSaturation((-10, 10)),
@@ -21,7 +21,7 @@ def create_augmenter(stage: str = "train"):
     ])
     elif stage == "val":
         return iaa.Sequential([
-            iaa.CropAndPad(px=(112, 112), sample_independently=False),
+            iaa.CropAndPad(px=(0, 112), sample_independently=False),
             iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)})
         ])
     elif stage == "test":
