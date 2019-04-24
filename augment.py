@@ -2,7 +2,7 @@ import cv2
 import plac
 import matplotlib.pyplot as pyplot
 
-from train import MobileDetectnetSequence
+from train import MobileDetectNetSequence
 
 @plac.annotations(
     test_path=("Path to images and labels folder", "positional", None, str),
@@ -13,7 +13,7 @@ def main(test_path: str = "test",
          stage: str = "train",
          num_images: int = 100):
 
-    generator = MobileDetectnetSequence(test_path, stage=stage, batch_size=num_images)
+    generator = MobileDetectNetSequence(test_path, stage=stage, batch_size=num_images)
     images, labels = generator.__getitem__(0)
 
     coverage = labels[0]

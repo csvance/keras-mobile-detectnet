@@ -1,4 +1,5 @@
-from model import MobileDetectnetModel
+from model import MobileDetectNetModel
+from train import MobileDetectNetSequence
 
 import numpy as np
 import time
@@ -6,7 +7,6 @@ import plac
 import os
 import cv2
 import matplotlib.pyplot as plt
-from augment import create_augmenter
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -19,7 +19,9 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
     weights_path=("Model weights", 'positional', None, str),
     test_path=("Test images path", 'option', 'I', str),
     merge=("Merge detected regions", 'flag', 'M', bool),
-    stage=("Augmentation training stage", 'option', 's', str)
+    stage=("Augmentation training stage", 'option', 's', str),
+    limit=("Max number of images to run inference on", 'option', 'l', int),
+    confidence=("Minimum confidence in coverage to draw bbox", "option", "c", float)
 )
 def main(inference_type: str = "K",
          batch_size: int = 1,
@@ -28,9 +30,11 @@ def main(inference_type: str = "K",
          input_dims: str = "224, 224, 3",
          weights_path: str = "mobiledetectnet.h5",
          merge: bool = False,
-         stage: str = "test"):
+         stage: str = "test",
+         limit: int = 20,
+         confidence: float=0.3):
 
-    model = MobileDetectnetModel.create(weights=None)
+    model = MobileDetectNetModel.create(weights=None)
     model.load_weights(weights_path)
 
     test_dims = [int(d) for d in input_dims.split(",")]
@@ -38,7 +42,9 @@ def main(inference_type: str = "K",
     images_full = None
     images_input = None
 
-    seq = create_augmenter(stage)
+    seq = MobileDetectNetSequence.create_augmenter(stage)
+
+    images_done = 0
 
     if test_path is None:
         test_dims.insert(0, test_size)
@@ -47,6 +53,7 @@ def main(inference_type: str = "K",
     else:
         images_full = []
         images_input = []
+
         for r, d, f in os.walk(test_path):
             for file in f:
 
@@ -58,6 +65,14 @@ def main(inference_type: str = "K",
 
                 images_full.append(image_full)
                 images_input.append(image_aug)
+
+                images_done += 1
+
+                if images_done == limit:
+                    break
+
+            if images_done == limit:
+                break
 
         x_test = np.array(images_input)
 
@@ -96,7 +111,7 @@ def main(inference_type: str = "K",
             rectangles = []
             for y in range(0, 7):
                 for x in range(0, 7):
-                    if coverage[idx, y, x] > 0.9:
+                    if coverage[idx, y, x] > confidence:
 
                         rect = [int(bboxes[idx, y, x, 0]*test_dims[1]),
                                 int(bboxes[idx, y, x, 1]*test_dims[0]),
@@ -106,7 +121,7 @@ def main(inference_type: str = "K",
                         rectangles.append(rect)
 
             if merge:
-                rectangles, merges = cv2.groupRectangles(rectangles, 1)
+                rectangles, merges = cv2.groupRectangles(rectangles, 1, eps=0.3)
 
             for rect in rectangles:
                 cv2.rectangle(images_input[idx],

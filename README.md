@@ -1,5 +1,7 @@
 # Keras MobileDetectNet
 
+![Example](example.jpg)
+
 MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature extractor to predict a coverage map and bounding boxes. It was designed to be computationally efficient for deployment on embedded systems and easy to train with limited data. It was inspired by the design of [DetectNet][detectnet].
 
 ### Network Arcitecture

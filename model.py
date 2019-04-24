@@ -14,7 +14,7 @@ from tensorflow.contrib import tensorrt as tftrt
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
-class MobileDetectnetFrozenGraph(object):
+class MobileDetectNetFrozenGraph(object):
     def __init__(self, model, shape):
         shape = (None, shape[0], shape[1], shape[2])
         x_name = 'image_tensor_x'
@@ -32,7 +32,7 @@ class MobileDetectnetFrozenGraph(object):
         self.frozen = graph1
 
 
-class MobileDetectnetTFEngine(object):
+class MobileDetectNetTFEngine(object):
     def __init__(self, graph):
         g = tf.Graph()
         with g.as_default():
@@ -54,7 +54,7 @@ class MobileDetectnetTFEngine(object):
         return y1, y2
 
 
-class MobileDetectnetTFTRTEngine(MobileDetectnetTFEngine):
+class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
     def __init__(self, graph, batch_size, precision):
         tftrt_graph = tftrt.create_inference_graph(
             graph.frozen,
@@ -87,7 +87,7 @@ class MobileDetectnetTFTRTEngine(MobileDetectnetTFEngine):
         return y1, y2
 
 
-class MobileDetectnetModel(Model):
+class MobileDetectNetModel(Model):
     @staticmethod
     def create(input_width: int = 224,
                input_height: int = 224,
@@ -104,7 +104,7 @@ class MobileDetectnetModel(Model):
         bboxes_preshape = Dense(7 * 7 * 4, activation='linear', name='bboxes_preshape')(flatten)
         bboxes = Reshape((7, 7, 4), name='bboxes')(bboxes_preshape)
 
-        return MobileDetectnetModel(inputs=mobilenet.input,
+        return MobileDetectNetModel(inputs=mobilenet.input,
                                     outputs=[coverage, bboxes])
 
     def plot(self, path: str = "mobiledetectnet_plot.png"):
@@ -112,15 +112,15 @@ class MobileDetectnetModel(Model):
         plot_model(self, to_file=path, show_shapes=True)
 
     def freeze(self):
-        return MobileDetectnetFrozenGraph(self, (self.input.shape[1], self.input.shape[2], self.input.shape[3]))
+        return MobileDetectNetFrozenGraph(self, (self.input.shape[1], self.input.shape[2], self.input.shape[3]))
 
     def tf_engine(self):
-        return MobileDetectnetTFEngine(self.freeze())
+        return MobileDetectNetTFEngine(self.freeze())
 
     def tftrt_engine(self, batch_size: int = 1, precision: str = 'FP16'):
         return MobileDetectnetTFTRTEngine(self.freeze(), batch_size=batch_size, precision=precision)
 
 
 if __name__ == '__main__':
-    model = MobileDetectnetModel.create()
+    model = MobileDetectNetModel.create()
     model.plot()

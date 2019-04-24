@@ -1,5 +1,5 @@
 import plac
-from model import MobileDetectnetModel
+from model import MobileDetectNetModel
 import tensorflow.keras as keras
 import os
 
@@ -15,7 +15,7 @@ def main(input_weights_path: str,
          output_weights_path: str = 'mobiledetectnet.h5',
          model_index: int = -3):
 
-    mobiledetectnet = MobileDetectnetModel.create()
+    mobiledetectnet = MobileDetectNetModel.create()
     mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
     mobiledetectnet.summary()
     mobiledetectnet.load_weights(input_weights_path)

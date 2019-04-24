@@ -12,12 +12,12 @@ from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.utils import Sequence
 
-from model import MobileDetectnetModel
+from model import MobileDetectNetModel
 
 from sgdr import SGDRScheduler
 
 
-class MobileDetectnetSequence(Sequence):
+class MobileDetectNetSequence(Sequence):
     def __init__(self,
                  path: str,
                  stage: str = "train",
@@ -42,7 +42,7 @@ class MobileDetectnetSequence(Sequence):
         self.coverage_width = coverage_width
         self.coverage_height = coverage_height
 
-        self.seq = MobileDetectnetSequence.create_augmenter(stage)
+        self.seq = MobileDetectNetSequence.create_augmenter(stage)
 
     def __len__(self):
         # TODO: Do stuff with "remainder" training data
@@ -64,7 +64,7 @@ class MobileDetectnetSequence(Sequence):
             old_shape = image.shape
             image = cv2.resize(image, (self.resize_height, self.resize_width))
 
-            bboxes, segmap = MobileDetectnetSequence.load_kitti_label(image,
+            bboxes, segmap = MobileDetectNetSequence.load_kitti_label(image,
                                                                       scale=(image.shape[0] / old_shape[0],
                                                                              image.shape[1] / old_shape[1]),
                                                                       label=self.labels[idx * self.batch_size + i])
@@ -196,7 +196,7 @@ def main(batch_size: int = 24,
          weights=None,
          workers: int = 8):
 
-    mobiledetectnet = MobileDetectnetModel.create()
+    mobiledetectnet = MobileDetectNetModel.create()
     mobiledetectnet.summary()
     mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
 
@@ -205,11 +205,11 @@ def main(batch_size: int = 24,
 
     mobiledetectnet.compile(optimizer=SGD(), loss='mean_absolute_error')
 
-    train_seq = MobileDetectnetSequence(train_path, stage="train", batch_size=batch_size)
-    val_seq = MobileDetectnetSequence(val_path, stage="val", batch_size=batch_size)
+    train_seq = MobileDetectNetSequence(train_path, stage="train", batch_size=batch_size)
+    val_seq = MobileDetectNetSequence(val_path, stage="val", batch_size=batch_size)
 
-    filepath = "{epoch:02d}-{val_bbox_loss:.4f}-multi-gpu.hdf5"
-    checkpoint = ModelCheckpoint(filepath, monitor='val_bbox_loss', verbose=1, save_best_only=True, mode='min')
+    filepath = "{epoch:02d}-{val_bboxes_loss:.4f}-multi-gpu.hdf5"
+    checkpoint = ModelCheckpoint(filepath, monitor='val_bboxes_loss', verbose=1, save_best_only=True, mode='min')
 
     sgdr_sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size))
 
