@@ -46,7 +46,7 @@ def main(inference_type: str = "K",
             for file in f:
 
                 image_full = cv2.imread(os.path.join(r, file))
-                image_input = cv2.resize(image_full, (test_dims[0], test_dims[1])).astype(np.float32) / 255.
+                image_input = (cv2.resize(image_full, (test_dims[0], test_dims[1])).astype(np.float32) / 127.5) - 1
 
                 images_full.append(image_full)
                 images_input.append(image_input)
@@ -88,7 +88,7 @@ def main(inference_type: str = "K",
             rectangles = []
             for y in range(0, 7):
                 for x in range(0, 7):
-                    if coverage[idx, y, x] > 0.9:
+                    if coverage[idx, y, x] > 0.5:
 
                         rect = [int(bboxes[idx, y, x, 0]*test_dims[1]),
                                 int(bboxes[idx, y, x, 1]*test_dims[0]),

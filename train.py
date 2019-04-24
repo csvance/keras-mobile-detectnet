@@ -45,17 +45,20 @@ class MobileDetectnetSequence(Sequence):
         if augment:
             self.seq = iaa.Sequential([
                 iaa.Fliplr(0.5),
-                iaa.Pad(percent=(0.25, 0.5)),
+                iaa.CropAndPad(px=(112, 112), sample_independently=False),
+                iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
                 iaa.SomeOf((0, 3), [
-                    iaa.AddToHueAndSaturation((-20, 20)),
+                    iaa.AddToHueAndSaturation((-10, 10)),
                     iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
-                    iaa.Affine(translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)}),
                     iaa.GaussianBlur(sigma=(0, 1.0)),
-                    iaa.AdditiveGaussianNoise(scale=0.2 * 255)
+                    iaa.AdditiveGaussianNoise(scale=0.1 * 255)
                 ])
             ])
         else:
-            self.seq = iaa.Sequential([iaa.Pad(percent=(0.25, 0.5))])
+            self.seq = iaa.Sequential([
+                iaa.CropAndPad(px=(112, 112), sample_independently=False),
+                iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)})
+            ])
 
     def __len__(self):
         return int(np.floor(len(self.images) / float(self.batch_size)))
@@ -107,9 +110,9 @@ class MobileDetectnetSequence(Sequence):
 
                         if bx1 <= x <= bx2 and by1 <= x <= by2:
 
-                            x_in = max(0, min(x+1, bx2) - max(x, bx1))
-                            y_in = max(0, min(y+1, by2) - max(y, by1))
-                            area_in = x_in*y_in
+                            x_in = max(0, min(x + 1, bx2) - max(x, bx1))
+                            y_in = max(0, min(y + 1, by2) - max(y, by1))
+                            area_in = x_in * y_in
 
                             # Prioritize the most dominant box in a region
                             if area_in > output_bboxes[i, y, x, 4]:
@@ -119,7 +122,7 @@ class MobileDetectnetSequence(Sequence):
                                 output_bboxes[i, y, x, 3] = bbox.y2 / self.resize_height
                                 output_bboxes[i, y, x, 4] = area_in
 
-                                #print(output_bboxes[i, y, x, 0:4])
+                                # print(output_bboxes[i, y, x, 0:4])
 
         # Remove fifth channel
         output_bboxes = output_bboxes[:, :, :, 0:4]
@@ -168,8 +171,13 @@ class MobileDetectnetSequence(Sequence):
 @plac.annotations(
     batch_size=('The training batch size', 'option', 'B', int),
     epochs=('Number of epochs to train', 'option', 'E', int),
-    train_path=('Path to the train folder which contains both an images and labels folder with KITTI labels', 'option', 'T', str),
-    val_path=('Path to the validation folder which contains both an images and labels folder with KITTI labels', 'option', 'V', str),
+    train_path=(
+            'Path to the train folder which contains both an images and labels folder with KITTI labels', 'option', 'T',
+            str),
+    val_path=(
+            'Path to the validation folder which contains both an images and labels folder with KITTI labels', 'option',
+            'V',
+            str),
     metric=('Loss metric to minimize', 'option', 'L', str),
     weights=('Weights file to start with', 'option', 'W', str),
     learning_rate=('Base learning rate for the training process', 'option', 'l', float),
@@ -185,7 +193,6 @@ def main(batch_size: int = 24,
          learning_rate: float = 0.0001,
          optimizer: str = "sgd",
          workers: int = 8):
-
     mobiledetectnet = MobileDetectnetModel.create()
     mobiledetectnet.summary()
     mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
@@ -194,7 +201,7 @@ def main(batch_size: int = 24,
         mobiledetectnet.load_weights(weights)
 
     if optimizer == "adam":
-        opt = Adam(lr=learning_rate, decay=0.75*(learning_rate / epochs))
+        opt = Adam(lr=learning_rate, decay=0.75 * (learning_rate / epochs))
     elif optimizer == "sgd":
         opt = SGD()
     else:
@@ -210,14 +217,14 @@ def main(batch_size: int = 24,
 
     callbacks = [checkpoint]
     if optimizer == "sgd":
-        sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq)/batch_size))
+        sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size))
         callbacks.append(sched)
 
     mobiledetectnet.fit_generator(train_seq,
                                   validation_data=val_seq,
                                   epochs=epochs,
-                                  steps_per_epoch=np.ceil(len(train_seq)/batch_size),
-                                  validation_steps=np.ceil(len(val_seq)/batch_size),
+                                  steps_per_epoch=np.ceil(len(train_seq) / batch_size),
+                                  validation_steps=np.ceil(len(val_seq) / batch_size),
                                   callbacks=callbacks,
                                   use_multiprocessing=True,
                                   workers=workers,
