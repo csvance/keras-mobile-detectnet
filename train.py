@@ -176,6 +176,7 @@ def main(batch_size: int = 24,
          learning_rate: float = 0.0001,
          optimizer: str = "sgd",
          workers: int = 8):
+
     mobiledetectnet = MobileDetectnetModel.create()
     mobiledetectnet.summary()
     mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
@@ -190,7 +191,7 @@ def main(batch_size: int = 24,
     else:
         raise ValueError("Invalid optimizer")
 
-    mobiledetectnet.compile(optimizer=opt, loss=['mean_squared_error', 'mean_absolute_error'])
+    mobiledetectnet.compile(optimizer=opt, loss=['mean_absolute_error', 'mean_absolute_error'])
 
     train_seq = MobileDetectnetSequence(train_path, stage="train", batch_size=batch_size)
     val_seq = MobileDetectnetSequence(val_path, stage="val", batch_size=batch_size)
