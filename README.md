@@ -1,6 +1,6 @@
 # Keras MobileDetectNet
 
-MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature extractor to predict a coverage map and bounding boxes. It was designed to be computationally efficient for deployment on embedded systems and easy to train with limited data.
+MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature extractor to predict a coverage map and bounding boxes. It was designed to be computationally efficient for deployment on embedded systems and easy to train with limited data. It was inspired by the design of [SSD][ssd] and [DetectNet][detectnet].
 
 ### Network Arcitecture
 ```
@@ -52,3 +52,5 @@ MobileDetectNet uses the KITTI label format and directory structure. See [here f
 [sequence]: https://keras.io/utils/
 [sgdr]: https://arxiv.org/abs/1608.03983
 [kitti]: https://github.com/NVIDIA/DIGITS/tree/master/digits/extensions/data/objectDetection
+[detectnet]: https://devblogs.nvidia.com/detectnet-deep-neural-network-object-detection-digits/
+[ssd]: https://arxiv.org/abs/1512.02325
