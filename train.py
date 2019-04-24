@@ -42,12 +42,15 @@ class MobileDetectnetSequence(Sequence):
 
         if augment:
             self.seq = iaa.Sequential([
-                iaa.Sometimes(0.5, iaa.Fliplr(1.0)),
-                iaa.SomeOf((0, 4), [
+                iaa.Fliplr(0.5),
+                iaa.Flipud(0.1),
+                iaa.Crop(percent=(0.0, 0.2)),
+                iaa.SomeOf((0, 3), [
                     iaa.AddToHueAndSaturation((-20, 20)),
-                    iaa.Affine(scale={"x": (0.8, 1.2), "y": (0.8, 1.2)}),
-                    iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
-                    iaa.GaussianBlur(sigma=(0, 3.0))
+                    iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
+                    iaa.Affine(translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)}),
+                    iaa.GaussianBlur(sigma=(0, 3.0)),
+                    iaa.AdditiveGaussianNoise(scale=0.2 * 255)
                 ])
             ])
         else:
@@ -87,7 +90,7 @@ class MobileDetectnetSequence(Sequence):
                                        interpolation=cv2.INTER_AREA).astype(np.float32)[:, :, 1]
 
             # Work on building a batch
-            input_image[i] = image_aug.astype(np.float32) / 255
+            input_image[i] = (image_aug.astype(np.float32) / 127.5) - 1.
             output_coverage_map[i] = output_segmap
 
             # Put each predicted bbox in its center
