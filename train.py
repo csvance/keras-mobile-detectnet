@@ -31,10 +31,10 @@ class MobileDetectnetSequence(Sequence):
         self.images = []
         self.labels = []
 
-        for r, d, f in os.walk("%s/images" % path):
+        for r, d, f in os.walk(os.path.join(path, "images")):
             for file in f:
                 self.images.append(os.path.join(r, file))
-                self.labels.append(os.path.join("%s/labels" % path, (file.split(".")[0] + ".txt")))
+                self.labels.append(os.path.join(path, "labels", (file.split(".")[0] + ".txt")))
 
         self.batch_size = batch_size
         self.resize_width = resize_width
@@ -45,6 +45,7 @@ class MobileDetectnetSequence(Sequence):
         self.seq = MobileDetectnetSequence.create_augmenter(stage)
 
     def __len__(self):
+        # TODO: Do stuff with "remainder" training data
         return int(np.floor(len(self.images) / float(self.batch_size)))
 
     def __getitem__(self, idx):
@@ -52,7 +53,7 @@ class MobileDetectnetSequence(Sequence):
         input_image = np.zeros((self.batch_size, self.resize_height, self.resize_width, 3))
         output_coverage_map = np.zeros((self.batch_size, self.coverage_height, self.coverage_width))
 
-        # We will resize to 4 channels later
+        # We need 4 fields for bboxes, but we temporarily use 5 to keep track of which bbox has a better claim
         output_bboxes = np.zeros((self.batch_size, self.coverage_height, self.coverage_width, 5))
 
         for i in range(0, self.batch_size):
@@ -81,9 +82,9 @@ class MobileDetectnetSequence(Sequence):
             input_image[i] = (image_aug.astype(np.float32) / 127.5) - 1.  # "tf" style normalization
             output_coverage_map[i] = output_segmap
 
-            # Put each predicted bbox in its center
             for bbox in bboxes_aug.bounding_boxes:
 
+                # Put a bbox in each title of its coverage map
                 for y in range(0, self.coverage_height):
                     for x in range(0, self.coverage_width):
 
@@ -99,7 +100,7 @@ class MobileDetectnetSequence(Sequence):
                             y_in = max(0, min(y + 1, by2) - max(y, by1))
                             area_in = x_in * y_in
 
-                            # Prioritize the most dominant box in a region
+                            # Prioritize the most dominant box in the coverage tile
                             if area_in > output_bboxes[i, y, x, 4]:
                                 output_bboxes[i, y, x, 0] = bbox.x1 / self.resize_width
                                 output_bboxes[i, y, x, 1] = bbox.y1 / self.resize_height
@@ -107,7 +108,7 @@ class MobileDetectnetSequence(Sequence):
                                 output_bboxes[i, y, x, 3] = bbox.y2 / self.resize_height
                                 output_bboxes[i, y, x, 4] = area_in
 
-        # Remove fifth channel
+        # Remove the "claim" bbox field so it matches the network output
         output_bboxes = output_bboxes[:, :, :, 0:4]
 
         return input_image, [
@@ -128,9 +129,12 @@ class MobileDetectnetSequence(Sequence):
             fields = row.split(' ')
 
             bbox_class = fields[0]
+
+            # TODO: Can we use this information to generate more accurate segmentation maps or bboxes?
             bbox_truncated = float(fields[1])
             bbox_occluded = int(fields[2])
             bbox_alpha = float(fields[3])
+
             bbox_x1 = float(fields[4]) * scale[1]
             bbox_y1 = float(fields[5]) * scale[0]
             bbox_x2 = float(fields[6]) * scale[1]
@@ -177,12 +181,11 @@ class MobileDetectnetSequence(Sequence):
     batch_size=('The training batch size', 'option', 'B', int),
     epochs=('Number of epochs to train', 'option', 'E', int),
     train_path=(
-            'Path to the train folder which contains both an images and labels folder with KITTI labels', 'option', 'T',
-            str),
+            'Path to the train folder which contains both an images and labels folder with KITTI labels',
+            'option', 'T', str),
     val_path=(
-            'Path to the validation folder which contains both an images and labels folder with KITTI labels', 'option',
-            'V',
-            str),
+            'Path to the validation folder which contains both an images and labels folder with KITTI labels',
+            'option', 'V', str),
     weights=('Weights file to start with', 'option', 'W', str),
     workers=('Number of fit_generator workers', 'option', 'w', int)
 )
