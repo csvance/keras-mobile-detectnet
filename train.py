@@ -187,14 +187,16 @@ class MobileDetectNetSequence(Sequence):
             'Path to the validation folder which contains both an images and labels folder with KITTI labels',
             'option', 'V', str),
     weights=('Weights file to start with', 'option', 'W', str),
-    workers=('Number of fit_generator workers', 'option', 'w', int)
+    workers=('Number of fit_generator workers', 'option', 'w', int),
+    find_lr=('Instead of training, search for an optimal learning rate', 'flag', None, bool)
 )
 def main(batch_size: int = 24,
          epochs: int = 630,
          train_path: str = 'train',
          val_path: str = 'val',
          weights=None,
-         workers: int = 8):
+         workers: int = 8,
+         find_lr: bool=False):
 
     mobiledetectnet = MobileDetectNetModel.create()
     mobiledetectnet.summary()
@@ -208,10 +210,17 @@ def main(batch_size: int = 24,
     train_seq = MobileDetectNetSequence(train_path, stage="train", batch_size=batch_size)
     val_seq = MobileDetectNetSequence(val_path, stage="val", batch_size=batch_size)
 
-    filepath = "{epoch:02d}-{val_bboxes_loss:.4f}-multi-gpu.hdf5"
+    if find_lr:
+        from lr_finder import LRFinder
+        lr_finder = LRFinder(mobiledetectnet)
+        lr_finder.find_generator(train_seq, start_lr=0.00001, end_lr=1, epochs=5)
+        lr_finder.plot_loss()
+        return
+
+    filepath = "weights-{epoch:02d}-{val_bboxes_loss:.4f}-multi-gpu.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_bboxes_loss', verbose=1, save_best_only=True, mode='min')
 
-    sgdr_sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size))
+    sgdr_sched = SGDRScheduler(0.0001, 0.1, steps_per_epoch=np.ceil(len(train_seq) / batch_size))
 
     mobiledetectnet.fit_generator(train_seq,
                                   validation_data=val_seq,
