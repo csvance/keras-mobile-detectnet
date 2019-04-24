@@ -3,7 +3,6 @@ import os
 import plac
 
 import cv2
-import imgaug as ia
 from imgaug import augmenters as iaa
 
 import imgaug as ia
@@ -84,6 +83,7 @@ class MobileDetectnetSequence(Sequence):
 
             # Put each predicted bbox in its center
             for bbox in bboxes_aug.bounding_boxes:
+
                 for y in range(0, self.coverage_height):
                     for x in range(0, self.coverage_width):
 
@@ -93,7 +93,7 @@ class MobileDetectnetSequence(Sequence):
                         by1 = (self.coverage_height * bbox.y1 / self.resize_height)
                         by2 = (self.coverage_height * bbox.y2 / self.resize_height)
 
-                        if bx1 <= x <= bx2 and by1 <= y <= by2:
+                        if np.floor(bx1) <= x <= np.ceil(bx2) and np.floor(by1) <= y <= np.ceil(by2):
 
                             x_in = max(0, min(x + 1, bx2) - max(x, bx1))
                             y_in = max(0, min(y + 1, by2) - max(y, by1))
@@ -106,8 +106,6 @@ class MobileDetectnetSequence(Sequence):
                                 output_bboxes[i, y, x, 2] = bbox.x2 / self.resize_width
                                 output_bboxes[i, y, x, 3] = bbox.y2 / self.resize_height
                                 output_bboxes[i, y, x, 4] = area_in
-
-                                # print(output_bboxes[i, y, x, 0:4])
 
         # Remove fifth channel
         output_bboxes = output_bboxes[:, :, :, 0:4]
@@ -200,7 +198,6 @@ def main(batch_size: int = 24,
          learning_rate: float = 0.0001,
          optimizer: str = "sgd",
          workers: int = 8):
-
     mobiledetectnet = MobileDetectnetModel.create()
     mobiledetectnet.summary()
     mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)

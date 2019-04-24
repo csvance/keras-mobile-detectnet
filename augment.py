@@ -11,7 +11,7 @@ from train import MobileDetectnetSequence
 )
 def main(test_path: str = "test",
          stage: str = "train",
-         num_images: int = 10):
+         num_images: int = 100):
 
     generator = MobileDetectnetSequence(test_path, stage=stage, batch_size=num_images)
     images, labels = generator.__getitem__(0)
