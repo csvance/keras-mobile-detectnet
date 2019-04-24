@@ -2,6 +2,10 @@ import numpy as np
 import os
 import plac
 
+import cv2
+from imgaug import augmenters as iaa
+import imgaug as ia
+
 import tensorflow.keras as keras
 from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.callbacks import ModelCheckpoint
@@ -38,32 +42,25 @@ class MobileDetectnetSequence(Sequence):
         self.coverage_width = coverage_width
         self.coverage_height = coverage_height
 
-        self.seq = None
+        if augment:
+            self.seq = iaa.Sequential([
+                iaa.Fliplr(0.5),
+                iaa.Pad(percent=(0.25, 0.5)),
+                iaa.SomeOf((0, 3), [
+                    iaa.AddToHueAndSaturation((-20, 20)),
+                    iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
+                    iaa.Affine(translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)}),
+                    iaa.GaussianBlur(sigma=(0, 1.0)),
+                    iaa.AdditiveGaussianNoise(scale=0.2 * 255)
+                ])
+            ])
+        else:
+            self.seq = iaa.Sequential([])
 
     def __len__(self):
         return int(np.floor(len(self.images) / float(self.batch_size)))
 
     def __getitem__(self, idx):
-        import cv2
-        from imgaug import augmenters as iaa
-
-        if self.seq is None:
-
-            if self.augment:
-                self.seq = iaa.Sequential([
-                    iaa.Fliplr(0.5),
-                    iaa.Flipud(0.1),
-                    iaa.Crop(percent=(0.0, 0.2)),
-                    iaa.SomeOf((0, 3), [
-                        iaa.AddToHueAndSaturation((-20, 20)),
-                        iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
-                        iaa.Affine(translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)}),
-                        iaa.GaussianBlur(sigma=(0, 3.0)),
-                        iaa.AdditiveGaussianNoise(scale=0.2 * 255)
-                    ])
-                ])
-            else:
-                self.seq = iaa.Sequential([])
 
         input_image = np.zeros((self.batch_size, self.resize_height, self.resize_width, 3))
         output_coverage_map = np.zeros((self.batch_size, self.coverage_height, self.coverage_width))
@@ -122,6 +119,8 @@ class MobileDetectnetSequence(Sequence):
                                 output_bboxes[i, y, x, 3] = bbox.y2 / self.resize_height
                                 output_bboxes[i, y, x, 4] = area_in
 
+                                #print(output_bboxes[i, y, x, 0:4])
+
         # Remove fifth channel
         output_bboxes = output_bboxes[:, :, :, 0:4]
 
@@ -132,7 +131,6 @@ class MobileDetectnetSequence(Sequence):
     @staticmethod
     # KITTI Format Labels
     def load_kitti_label(image: np.ndarray, scale, label: str):
-        import imgaug as ia
 
         label = open(label, 'r').read()
 

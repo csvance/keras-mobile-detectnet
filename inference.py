@@ -16,14 +16,16 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
     test_size=("Number of samples run the inference on", 'option', 'S', int),
     input_dims=("Comma seperate input dimensions ie 224, 224, 3", 'option', 'D', str),
     weights_path=("Model weights", 'positional', None, str),
-    test_path=("Test images path", 'option', 'I', str)
+    test_path=("Test images path", 'option', 'I', str),
+    merge=("Merge detected regions", 'fag', 'M', bool)
 )
 def main(inference_type: str = "K",
          batch_size: int = 1,
          test_size: int = 1,
          test_path: str = None,
          input_dims: str = "224, 224, 3",
-         weights_path: str = "mobiledetectnet.h5"):
+         weights_path: str = "mobiledetectnet.h5",
+         merge: bool = False):
 
     model = MobileDetectnetModel.create(weights=None)
     model.load_weights(weights_path)
@@ -95,7 +97,9 @@ def main(inference_type: str = "K",
 
                         rectangles.append(rect)
 
-            rectangles, merges = cv2.groupRectangles(rectangles, 1)
+            if merge:
+                rectangles, merges = cv2.groupRectangles(rectangles, 1)
+
             for rect in rectangles:
                 cv2.rectangle(images_input[idx],
                               (rect[0], rect[1]),
