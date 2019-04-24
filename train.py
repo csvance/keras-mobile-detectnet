@@ -55,7 +55,7 @@ class MobileDetectnetSequence(Sequence):
                 ])
             ])
         else:
-            self.seq = iaa.Sequential([])
+            self.seq = iaa.Sequential([iaa.Pad(percent=(0.25, 0.5))])
 
     def __len__(self):
         return int(np.floor(len(self.images) / float(self.batch_size)))
