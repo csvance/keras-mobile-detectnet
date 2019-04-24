@@ -3,7 +3,7 @@ import os
 import plac
 
 import cv2
-from imgaug import augmenters as iaa
+from augment import create_augmenter
 import imgaug as ia
 
 import tensorflow.keras as keras
@@ -19,7 +19,7 @@ from sgdr import SGDRScheduler
 class MobileDetectnetSequence(Sequence):
     def __init__(self,
                  path: str,
-                 augment: bool = True,
+                 stage: str = "train",
                  batch_size: int = 12,
                  resize_width: int = 224,
                  resize_height: int = 224,
@@ -36,29 +36,12 @@ class MobileDetectnetSequence(Sequence):
                 self.labels.append(os.path.join("%s/labels" % path, (file.split(".")[0] + ".txt")))
 
         self.batch_size = batch_size
-        self.augment = augment
         self.resize_width = resize_width
         self.resize_height = resize_height
         self.coverage_width = coverage_width
         self.coverage_height = coverage_height
 
-        if augment:
-            self.seq = iaa.Sequential([
-                iaa.Fliplr(0.5),
-                iaa.CropAndPad(px=(112, 112), sample_independently=False),
-                iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
-                iaa.SomeOf((0, 3), [
-                    iaa.AddToHueAndSaturation((-10, 10)),
-                    iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
-                    iaa.GaussianBlur(sigma=(0, 1.0)),
-                    iaa.AdditiveGaussianNoise(scale=0.1 * 255)
-                ])
-            ])
-        else:
-            self.seq = iaa.Sequential([
-                iaa.CropAndPad(px=(112, 112), sample_independently=False),
-                iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)})
-            ])
+        self.seq = create_augmenter(stage)
 
     def __len__(self):
         return int(np.floor(len(self.images) / float(self.batch_size)))
@@ -209,8 +192,8 @@ def main(batch_size: int = 24,
 
     mobiledetectnet.compile(optimizer=opt, loss=['mean_absolute_error', 'mean_absolute_error'])
 
-    train_seq = MobileDetectnetSequence(train_path, augment=True, batch_size=batch_size)
-    val_seq = MobileDetectnetSequence(val_path, augment=False, batch_size=batch_size)
+    train_seq = MobileDetectnetSequence(train_path, stage="train", batch_size=batch_size)
+    val_seq = MobileDetectnetSequence(val_path, stage="val", batch_size=batch_size)
 
     filepath = "weights-improvement-{epoch:02d}-{%s:.4f}.hdf5" % metric
     checkpoint = ModelCheckpoint(filepath, monitor=metric, verbose=1, save_best_only=True, mode='min')
