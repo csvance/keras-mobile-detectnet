@@ -3,7 +3,9 @@ import os
 import plac
 
 import cv2
-from augment import create_augmenter
+import imgaug as ia
+from imgaug import augmenters as iaa
+
 import imgaug as ia
 
 import tensorflow.keras as keras
@@ -41,7 +43,7 @@ class MobileDetectnetSequence(Sequence):
         self.coverage_width = coverage_width
         self.coverage_height = coverage_height
 
-        self.seq = create_augmenter(stage)
+        self.seq = MobileDetectnetSequence.create_augmenter(stage)
 
     def __len__(self):
         return int(np.floor(len(self.images) / float(self.batch_size)))
@@ -91,7 +93,7 @@ class MobileDetectnetSequence(Sequence):
                         by1 = (self.coverage_height * bbox.y1 / self.resize_height)
                         by2 = (self.coverage_height * bbox.y2 / self.resize_height)
 
-                        if bx1 <= x <= bx2 and by1 <= x <= by2:
+                        if bx1 <= x <= bx2 and by1 <= y <= by2:
 
                             x_in = max(0, min(x + 1, bx2) - max(x, bx1))
                             y_in = max(0, min(y + 1, by2) - max(y, by1))
@@ -149,6 +151,28 @@ class MobileDetectnetSequence(Sequence):
         smoi = ia.SegmentationMapOnImage(segmap, shape=image.shape, nb_classes=2)
 
         return bboi, smoi
+
+    @staticmethod
+    def create_augmenter(stage: str = "train"):
+        if stage == "train":
+            return iaa.Sequential([
+                iaa.Fliplr(0.5),
+                iaa.CropAndPad(px=(0, 112), sample_independently=False),
+                iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
+                iaa.SomeOf((0, 3), [
+                    iaa.AddToHueAndSaturation((-10, 10)),
+                    iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
+                    iaa.GaussianBlur(sigma=(0, 1.0)),
+                    iaa.AdditiveGaussianNoise(scale=0.1 * 255)
+                ])
+            ])
+        elif stage == "val":
+            return iaa.Sequential([
+                iaa.CropAndPad(px=(0, 112), sample_independently=False),
+                iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)})
+            ])
+        elif stage == "test":
+            return iaa.Sequential([])
 
 
 @plac.annotations(

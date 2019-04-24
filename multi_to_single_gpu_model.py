@@ -8,7 +8,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 @plac.annotations(
     input_weights_path=('Path to the weights file', 'positional', None, str),
-    output_weights_path=('Path to the single GPU weights file', 'positional', None, str),
+    output_weights_path=('Path to the single GPU weights file', 'option', 'O', str),
     model_index=('Index of the layer which contains the single GPU model', 'option', 'I', int)
 )
 def main(input_weights_path: str,
