@@ -101,8 +101,8 @@ class MobileDetectnetModel(Model):
         new_output = mobilenet.get_layer('conv_pw_13_relu').output
 
         coverage = Conv2D(1, 1, activation='sigmoid', name='coverage')(new_output)
-        conv_coverage = Conv2D(4, 2, activation='relu', padding='same', name='conv_coverage')(coverage)
-        bboxes = Conv2D(4, 2, activation='linear', padding='same', name='bboxes')(conv_coverage)
+        conv_coverage = Conv2D(9, 3, activation='relu', padding='same', name='conv_coverage')(coverage)
+        bboxes = Conv2D(4, 3, activation='linear', padding='same', name='bboxes')(conv_coverage)
 
         return MobileDetectnetModel(inputs=mobilenet.input,
                                     outputs=[coverage, bboxes])
