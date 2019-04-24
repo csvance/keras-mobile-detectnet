@@ -1,5 +1,6 @@
 import copy
 import numpy as np
+import os
 
 from typing import Optional
 
@@ -9,6 +10,8 @@ import tensorflow.keras as keras
 from tensorflow.keras import backend as K
 import tensorflow as tf
 from tensorflow.contrib import tensorrt as tftrt
+
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
 class MobileDetectnetFrozenGraph(object):

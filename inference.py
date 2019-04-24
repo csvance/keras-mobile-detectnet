@@ -83,8 +83,6 @@ def main(inference_type: str = "K",
     if images_full is not None:
         for idx in range(0, len(images_full)):
 
-            print(np.max(bboxes[idx]))
-
             rectangles = []
             for y in range(0, 7):
                 for x in range(0, 7):
