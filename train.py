@@ -8,7 +8,7 @@ from imgaug import augmenters as iaa
 import imgaug as ia
 
 import tensorflow.keras as keras
-from tensorflow.keras.optimizers import Adam, SGD
+from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.utils import Sequence
 
@@ -183,21 +183,16 @@ class MobileDetectnetSequence(Sequence):
             'Path to the validation folder which contains both an images and labels folder with KITTI labels', 'option',
             'V',
             str),
-    metric=('Loss metric to minimize', 'option', 'L', str),
     weights=('Weights file to start with', 'option', 'W', str),
-    learning_rate=('Base learning rate for the training process', 'option', 'l', float),
-    optimizer=('Which optimizer to use. Valid options include adam and sgd', 'option', 'o', str),
     workers=('Number of fit_generator workers', 'option', 'w', int)
 )
 def main(batch_size: int = 24,
          epochs: int = 500,
          train_path: str = 'train',
          val_path: str = 'val',
-         metric='val_bboxes_loss',
          weights=None,
-         learning_rate: float = 0.0001,
-         optimizer: str = "sgd",
          workers: int = 8):
+
     mobiledetectnet = MobileDetectnetModel.create()
     mobiledetectnet.summary()
     mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
@@ -205,32 +200,22 @@ def main(batch_size: int = 24,
     if weights is not None:
         mobiledetectnet.load_weights(weights)
 
-    if optimizer == "adam":
-        opt = Adam(lr=learning_rate, decay=0.75 * (learning_rate / epochs))
-    elif optimizer == "sgd":
-        opt = SGD()
-    else:
-        raise ValueError("Invalid optimizer")
-
-    mobiledetectnet.compile(optimizer=opt, loss=['mean_absolute_error', 'mean_absolute_error'])
+    mobiledetectnet.compile(optimizer=SGD(), loss='mean_absolute_error')
 
     train_seq = MobileDetectnetSequence(train_path, stage="train", batch_size=batch_size)
     val_seq = MobileDetectnetSequence(val_path, stage="val", batch_size=batch_size)
 
-    filepath = "weights-improvement-{epoch:02d}-{%s:.4f}.hdf5" % metric
-    checkpoint = ModelCheckpoint(filepath, monitor=metric, verbose=1, save_best_only=True, mode='min')
+    filepath = "{epoch:02d}-{val_bbox_loss:.4f}-multi-gpu.hdf5"
+    checkpoint = ModelCheckpoint(filepath, monitor='val_bbox_loss', verbose=1, save_best_only=True, mode='min')
 
-    callbacks = [checkpoint]
-    if optimizer == "sgd":
-        sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size))
-        callbacks.append(sched)
+    sgdr_sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size))
 
     mobiledetectnet.fit_generator(train_seq,
                                   validation_data=val_seq,
                                   epochs=epochs,
                                   steps_per_epoch=np.ceil(len(train_seq) / batch_size),
                                   validation_steps=np.ceil(len(val_seq) / batch_size),
-                                  callbacks=callbacks,
+                                  callbacks=[checkpoint, sgdr_sched],
                                   use_multiprocessing=True,
                                   workers=workers,
                                   shuffle=True)
