@@ -20,7 +20,7 @@ MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature 
         bboxes = Reshape((7, 7, 4), name='bboxes')(bboxes_preshape)
         
         mobiledetectnet = Model(inputs=mobilenet.input, outputs=[coverage, bboxes])
-        mobiledetectnet.compile(optimizer=opt, loss=['mean_absolute_error', 'mean_absolute_error'])
+        mobiledetectnet.compile(optimizer=SGD(), loss='mean_absolute_error')
 ```
 
 ### Training
