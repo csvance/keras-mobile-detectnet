@@ -97,12 +97,12 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
         return y2, y1
 
 
-class TranslationalVariantConv2D(Layer):
+class ShiftVariantConv2D(Layer):
     def __init__(self, **kwargs):
 
         self.output_dim = None
 
-        super(TranslationalVariantConv2D, self).__init__(**kwargs)
+        super(ShiftVariantConv2D, self).__init__(**kwargs)
 
     def build(self, input_shape):
 
@@ -112,7 +112,7 @@ class TranslationalVariantConv2D(Layer):
                                       initializer='uniform',
                                       trainable=True)
 
-        super(TranslationalVariantConv2D, self).build(input_shape)
+        super(ShiftVariantConv2D, self).build(input_shape)
 
     def call(self, x):
         rows = []
@@ -252,7 +252,7 @@ class MobileDetectNetModel(Model):
         if feature_upsample == 1:
             coverage = Conv2D(1, 3, activation='sigmoid', padding='same', name='coverage')(new_output)
         else:
-            choke = Conv2D(4, 3, padding='same', name='choke')(new_output)
+            choke = Conv2D(4, 1, name='choke')(new_output)
             batchnorm_choke = BatchNormalization(name='batchnorm_choke')(choke)
             batchnorm_choke_relu = Activation('relu', name='batchnorm_choke_relu')(batchnorm_choke)
 
@@ -265,7 +265,7 @@ class MobileDetectNetModel(Model):
         if feature_upsample == 1:
             bboxes = Conv2D(4, 2, strides=feature_upsample, activation='linear', name='bboxes')(coverage)
         else:
-            bboxes = TranslationalVariantConv2D(name='bboxes')(coverage)
+            bboxes = ShiftVariantConv2D(name='bboxes')(coverage)
 
         return (MobileDetectNetModel(inputs=mobilenet.input,
                                      outputs=[coverage, bboxes]),

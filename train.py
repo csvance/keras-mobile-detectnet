@@ -76,7 +76,7 @@ class MobileDetectNetSequence(Sequence):
                                                                       label=self.labels[idx * self.batch_size + i])
 
             image_aug = seq_det.augment_image(image)
-            bboxes_aug = seq_det.augment_bounding_boxes(bboxes)
+            bboxes_aug = seq_det.augment_bounding_boxes(bboxes).remove_out_of_image().clip_out_of_image()
 
             segmap_aug = seq_det.augment_segmentation_maps(segmap)
 
@@ -166,7 +166,7 @@ class MobileDetectNetSequence(Sequence):
             return iaa.Sequential([
                 iaa.Fliplr(0.5),
                 iaa.CropAndPad(px=(0, 112), sample_independently=False),
-                iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
+                iaa.Affine(translate_percent={"x": (-0.5, 0.5), "y": (-0.5, 0.5)}),
                 iaa.SomeOf((0, 3), [
                     iaa.AddToHueAndSaturation((-10, 10)),
                     iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
@@ -177,7 +177,7 @@ class MobileDetectNetSequence(Sequence):
         elif stage == "val":
             return iaa.Sequential([
                 iaa.CropAndPad(px=(0, 112), sample_independently=False),
-                iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)})
+                iaa.Affine(translate_percent={"x": (-0.5, 0.5), "y": (-0.5, 0.5)}),
             ])
         elif stage == "test":
             return iaa.Sequential([])
@@ -198,7 +198,7 @@ class MobileDetectNetSequence(Sequence):
     feature_upsample = ("", "option", "u", int)
 )
 def main(batch_size: int = 24,
-         epochs: int = 460,
+         epochs: int = 384,
          train_path: str = 'train',
          val_path: str = 'val',
          weights=None,
@@ -208,9 +208,6 @@ def main(batch_size: int = 24,
 
     mobiledetectnet, coverage_shape = MobileDetectNetModel.create(feature_upsample=feature_upsample)
     bboxes_shape = [int(d/feature_upsample) for d in coverage_shape]
-
-    print(coverage_shape)
-    print(bboxes_shape)
 
     mobiledetectnet.summary()
     mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
@@ -239,7 +236,7 @@ def main(batch_size: int = 24,
     filepath = "weights-{epoch:02d}-{val_bboxes_loss:.4f}-multi-gpu.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_bboxes_loss', verbose=1, save_best_only=True, mode='min')
 
-    sgdr_sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size), mult_factor=1.2)
+    sgdr_sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size), mult_factor=1.5)
 
     mobiledetectnet.fit_generator(train_seq,
                                   validation_data=val_seq,

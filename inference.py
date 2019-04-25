@@ -61,7 +61,8 @@ def main(inference_type: str = "K",
         for r, d, f in os.walk(test_path):
             for file in f:
 
-                for i in range(0, limit):
+                #for i in range(0, limit):
+                if True:
 
                     image_full = cv2.imread(os.path.join(r, file))
                     image_input = cv2.resize(image_full, (test_dims[0], test_dims[1]))
