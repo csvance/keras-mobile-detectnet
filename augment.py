@@ -10,20 +10,17 @@ from model import MobileDetectNetModel
     test_path=("Path to images and labels folder", "positional", None, str),
     stage=("Augmentation stage", "option", "S", str),
     num_images=("Number of images to test", "option", "I", str),
-    feature_upsample=("", "option", "U", int)
 )
 def main(test_path: str = "test",
          stage: str = "train",
-         num_images: int = 100,
-         feature_upsample: int = 1):
+         num_images: int = 100):
 
-    mobiledetectnet, coverage_shape = MobileDetectNetModel.create(feature_upsample=feature_upsample)
-    bboxes_shape = [int(d/feature_upsample) for d in coverage_shape]
+    mobiledetectnet, coverage_shape = MobileDetectNetModel.create()
+    bboxes_shape = [int(d/2) for d in coverage_shape]
 
     generator = MobileDetectNetSequence(test_path, stage=stage, batch_size=num_images,
                                         coverage_width=coverage_shape[1], coverage_height=coverage_shape[0],
-                                        bboxes_width=bboxes_shape[1], bboxes_height=bboxes_shape[0],
-                                        feature_upsample=feature_upsample)
+                                        bboxes_width=bboxes_shape[1], bboxes_height=bboxes_shape[0])
 
     images, labels = generator.__getitem__(0)
 
@@ -39,8 +36,8 @@ def main(test_path: str = "test",
             for x in range(0, coverage_shape[1]):
                 if coverage[i, y, x] > 0:
                     cv2.rectangle(image,
-                                  (int(bboxes[i, int(y/feature_upsample), int(x/feature_upsample), 0]*224), int(bboxes[i, int(y/feature_upsample), int(x/feature_upsample), 1]*224)),
-                                  (int(bboxes[i, int(y/feature_upsample), int(x/feature_upsample), 2]*224), int(bboxes[i, int(y/feature_upsample), int(x/feature_upsample), 3]*224)),
+                                  (int(bboxes[i, int(y/2), int(x/2), 0]*224), int(bboxes[i, int(y/2), int(x/2), 1]*224)),
+                                  (int(bboxes[i, int(y/2), int(x/2), 2]*224), int(bboxes[i, int(y/2), int(x/2), 3]*224)),
                                   (0, 1, 0), 2)
 
         pyplot.imshow(image, alpha=1.0)

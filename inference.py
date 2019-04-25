@@ -19,7 +19,6 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
     stage=("Test images only: Augmentation training stage", 'option', 's', str),
     limit=("Test images only: Max number of images to run inference on", 'option', 'l', int),
     confidence=("Test images only: Minimum confidence in coverage to draw bbox", "option", "c", float),
-    feature_upsample=("", "option", "u", int)
 )
 def main(inference_type: str = "K",
          batch_size: int = 1,
@@ -30,10 +29,9 @@ def main(inference_type: str = "K",
          merge: bool = False,
          stage: str = "test",
          limit: int = 20,
-         confidence: float = 0.1,
-         feature_upsample: int = 1):
+         confidence: float = 0.1):
 
-    model, coverage_shape = MobileDetectNetModel.create(weights=None, feature_upsample=feature_upsample)
+    model, coverage_shape = MobileDetectNetModel.create(weights=None)
     model.load_weights(weights_path)
 
     test_dims = [int(d) for d in input_dims.split(",")]

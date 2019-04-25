@@ -5,7 +5,7 @@ import os
 from typing import Optional
 
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dense, Flatten, Reshape, UpSampling2D, Conv2D, Dropout, BatchNormalization, Activation, Layer
+from tensorflow.keras.layers import Dense, UpSampling2D, Conv2D, BatchNormalization, Activation, Layer
 import tensorflow.keras as keras
 from tensorflow.keras import backend as K
 import tensorflow as tf
@@ -239,7 +239,6 @@ class MobileDetectNetModel(Model):
     @staticmethod
     def create(input_width: int = 224,
                input_height: int = 224,
-               feature_upsample: int = 1,
                weights: Optional[str] = "imagenet"):
 
         mobilenet = keras.applications.mobilenet.MobileNet(include_top=False,
@@ -249,23 +248,17 @@ class MobileDetectNetModel(Model):
 
         new_output = mobilenet.get_layer('conv_pw_13_relu').output
 
-        if feature_upsample == 1:
-            coverage = Conv2D(1, 3, activation='sigmoid', padding='same', name='coverage')(new_output)
-        else:
-            choke = Conv2D(4, 1, name='choke')(new_output)
-            batchnorm_choke = BatchNormalization(name='batchnorm_choke')(choke)
-            batchnorm_choke_relu = Activation('relu', name='batchnorm_choke_relu')(batchnorm_choke)
+        choke = Conv2D(4, 1, name='choke')(new_output)
+        batchnorm_choke = BatchNormalization(name='batchnorm_choke')(choke)
+        batchnorm_choke_relu = Activation('relu', name='batchnorm_choke_relu')(batchnorm_choke)
 
-            upsample = UpSampling2D(feature_upsample, 'channels_last', name='up_sampling2d')(batchnorm_choke_relu)
-            coverage = Conv2D(1, 1, activation='sigmoid', name='coverage')(upsample)
+        upsample = UpSampling2D(2, 'channels_last', name='up_sampling2d')(batchnorm_choke_relu)
+        coverage = Conv2D(1, 1, activation='sigmoid', name='coverage')(upsample)
 
         coverage_height = int(coverage.shape[1])
         coverage_width = int(coverage.shape[2])
 
-        if feature_upsample == 1:
-            bboxes = Conv2D(4, 2, strides=feature_upsample, activation='linear', name='bboxes')(coverage)
-        else:
-            bboxes = ShiftVariantConv2D(name='bboxes')(coverage)
+        bboxes = ShiftVariantConv2D(name='bboxes')(coverage)
 
         return (MobileDetectNetModel(inputs=mobilenet.input,
                                      outputs=[coverage, bboxes]),
@@ -286,6 +279,6 @@ class MobileDetectNetModel(Model):
 
 
 if __name__ == '__main__':
-    mobiledetectnet, coverage_shape = MobileDetectNetModel.create(feature_upsample=2)
+    mobiledetectnet, coverage_shape = MobileDetectNetModel.create()
     mobiledetectnet.summary()
     mobiledetectnet.plot()

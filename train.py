@@ -27,8 +27,7 @@ class MobileDetectNetSequence(Sequence):
                  coverage_width: int = 7,
                  coverage_height: int = 7,
                  bboxes_width: int = 7,
-                 bboxes_height: int = 7,
-                 feature_upsample: int = 1
+                 bboxes_height: int = 7
                  ):
 
         self.images = []
@@ -46,7 +45,6 @@ class MobileDetectNetSequence(Sequence):
         self.coverage_height = coverage_height
         self.bboxes_width = bboxes_width
         self.bboxes_height = bboxes_height
-        self.feature_upsample = feature_upsample
 
         self.seq = MobileDetectNetSequence.create_augmenter(stage)
 
@@ -102,17 +100,17 @@ class MobileDetectNetSequence(Sequence):
 
                         if np.floor(bx1) <= x <= np.ceil(bx2) and np.floor(by1) <= y <= np.ceil(by2):
 
-                            x_in = max(0, min(x + self.feature_upsample, bx2) - max(x, bx1))
-                            y_in = max(0, min(y + self.feature_upsample, by2) - max(y, by1))
+                            x_in = max(0, min(x + 2, bx2) - max(x, bx1))
+                            y_in = max(0, min(y + 2, by2) - max(y, by1))
                             area_in = x_in * y_in
 
                             # Prioritize the most dominant box in the coverage tile
-                            if area_in > output_bboxes[i, int(y/self.feature_upsample), int(x/self.feature_upsample), 4]:
-                                output_bboxes[i, int(y/self.feature_upsample), int(x/self.feature_upsample), 0] = bbox.x1 / self.resize_width
-                                output_bboxes[i, int(y/self.feature_upsample), int(x/self.feature_upsample), 1] = bbox.y1 / self.resize_height
-                                output_bboxes[i, int(y/self.feature_upsample), int(x/self.feature_upsample), 2] = bbox.x2 / self.resize_width
-                                output_bboxes[i, int(y/self.feature_upsample), int(x/self.feature_upsample), 3] = bbox.y2 / self.resize_height
-                                output_bboxes[i, int(y/self.feature_upsample), int(x/self.feature_upsample), 4] = area_in
+                            if area_in > output_bboxes[i, int(y/2), int(x/2), 4]:
+                                output_bboxes[i, int(y/2), int(x/2), 0] = bbox.x1 / self.resize_width
+                                output_bboxes[i, int(y/2), int(x/2), 1] = bbox.y1 / self.resize_height
+                                output_bboxes[i, int(y/2), int(x/2), 2] = bbox.x2 / self.resize_width
+                                output_bboxes[i, int(y/2), int(x/2), 3] = bbox.y2 / self.resize_height
+                                output_bboxes[i, int(y/2), int(x/2), 4] = area_in
 
         # Remove the "claim" bbox field so it matches the network output
         output_bboxes = output_bboxes[:, :, :, 0:4]
@@ -195,7 +193,6 @@ class MobileDetectNetSequence(Sequence):
     weights=('Weights file to start with', 'option', 'W', str),
     workers=('Number of fit_generator workers', 'option', 'w', int),
     find_lr=('Instead of training, search for an optimal learning rate', 'flag', None, bool),
-    feature_upsample = ("", "option", "u", int)
 )
 def main(batch_size: int = 24,
          epochs: int = 384,
@@ -203,11 +200,10 @@ def main(batch_size: int = 24,
          val_path: str = 'val',
          weights=None,
          workers: int = 8,
-         find_lr: bool=False,
-         feature_upsample: int = 1):
+         find_lr: bool=False):
 
-    mobiledetectnet, coverage_shape = MobileDetectNetModel.create(feature_upsample=feature_upsample)
-    bboxes_shape = [int(d/feature_upsample) for d in coverage_shape]
+    mobiledetectnet, coverage_shape = MobileDetectNetModel.create()
+    bboxes_shape = [int(d/2) for d in coverage_shape]
 
     mobiledetectnet.summary()
     mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
@@ -219,12 +215,10 @@ def main(batch_size: int = 24,
 
     train_seq = MobileDetectNetSequence(train_path, stage="train", batch_size=batch_size,
                                         coverage_height=coverage_shape[0], coverage_width=coverage_shape[1],
-                                        bboxes_height=bboxes_shape[0], bboxes_width=bboxes_shape[1],
-                                        feature_upsample=feature_upsample)
+                                        bboxes_height=bboxes_shape[0], bboxes_width=bboxes_shape[1])
     val_seq = MobileDetectNetSequence(val_path, stage="val", batch_size=batch_size,
                                       coverage_height=coverage_shape[0], coverage_width=coverage_shape[1],
-                                      bboxes_height=bboxes_shape[0], bboxes_width=bboxes_shape[1],
-                                      feature_upsample=feature_upsample)
+                                      bboxes_height=bboxes_shape[0], bboxes_width=bboxes_shape[1])
 
     if find_lr:
         from lr_finder import LRFinder
