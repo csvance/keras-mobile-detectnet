@@ -5,7 +5,7 @@ import os
 from typing import Optional
 
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dense, Flatten, Conv2D, Reshape
+from tensorflow.keras.layers import Dense, Flatten, Reshape, UpSampling2D, Conv2D
 import tensorflow.keras as keras
 from tensorflow.keras import backend as K
 import tensorflow as tf
@@ -30,6 +30,7 @@ class MobileDetectNetFrozenGraph(object):
         self.x_name = [x_name]
         self.y_name = y_name
         self.frozen = graph1
+        self.model = model
 
 
 class MobileDetectNetTFEngine(object):
@@ -39,6 +40,7 @@ class MobileDetectNetTFEngine(object):
             x_op, y_op1, y_op2 = tf.import_graph_def(
                 graph_def=graph.frozen, return_elements=graph.x_name + graph.y_name)
             self.x_tensor = x_op.outputs[0]
+
             self.y_tensor1 = y_op1.outputs[0]
             self.y_tensor2 = y_op2.outputs[0]
 
@@ -51,7 +53,7 @@ class MobileDetectNetTFEngine(object):
     def infer(self, x):
         y1, y2 = self.sess.run([self.y_tensor1, self.y_tensor2],
                                feed_dict={self.x_tensor: x})
-        return y1, y2
+        return y2, y1
 
 
 class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
@@ -65,6 +67,7 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
             minimum_segment_size=2)
 
         self.tftrt_graph = tftrt_graph
+        self.graph = graph
 
         opt_graph = copy.deepcopy(graph)
         opt_graph.frozen = tftrt_graph
@@ -73,8 +76,15 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
 
     def infer(self, x):
         num_tests = x.shape[0]
-        y1 = np.zeros((num_tests, 7, 7, 4), np.float32)
-        y2 = np.zeros((num_tests, 7, 7, 1), np.float32)
+
+        bboxes_height = int(self.graph.model.get_layer('bboxes').output.shape[1])
+        bboxes_width = int(self.graph.model.get_layer('bboxes').output.shape[2])
+
+        coverage_height = int(self.graph.model.get_layer('coverage').output.shape[1])
+        coverage_width = int(self.graph.model.get_layer('coverage').output.shape[2])
+
+        y1 = np.zeros((num_tests, bboxes_height, bboxes_width, 4), np.float32)
+        y2 = np.zeros((num_tests, coverage_height, coverage_width, 1), np.float32)
         batch_size = self.batch_size
 
         for i in range(0, num_tests, batch_size):
@@ -84,14 +94,16 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
             y1[i: i + batch_size] = y_part1
             y2[i: i + batch_size] = y_part2
 
-        return y1, y2
+        return y2, y1
 
 
 class MobileDetectNetModel(Model):
     @staticmethod
     def create(input_width: int = 224,
                input_height: int = 224,
+               feature_upsample: int = 2,
                weights: Optional[str] = "imagenet"):
+
         mobilenet = keras.applications.mobilenet.MobileNet(include_top=False,
                                                            input_shape=(input_height, input_width, 3),
                                                            weights=weights,
@@ -99,16 +111,29 @@ class MobileDetectNetModel(Model):
 
         new_output = mobilenet.get_layer('conv_pw_13_relu').output
 
-        coverage = Conv2D(1, 1, activation='sigmoid', name='coverage')(new_output)
-        flatten = Flatten()(coverage)
-        bboxes_preshape = Dense(7 * 7 * 4, activation='linear', name='bboxes_preshape')(flatten)
-        bboxes = Reshape((7, 7, 4), name='bboxes')(bboxes_preshape)
+        if feature_upsample == 1:
+            coverage = Dense(1, activation='sigmoid', name='sigmoid')(new_output)
+        else:
+            choke = Dense(2*feature_upsample, activation='relu', name='choke')(new_output)
+            upsample = UpSampling2D(feature_upsample, 'channels_last', name='up_sampling2d')(choke)
+            coverage = Dense(1, activation='sigmoid', name='coverage')(upsample)
 
-        return MobileDetectNetModel(inputs=mobilenet.input,
-                                    outputs=[coverage, bboxes])
+        coverage_height = int(coverage.shape[1])
+        coverage_width = int(coverage.shape[2])
+
+        bbox_width = int(coverage_width / feature_upsample)
+        bbox_height = int(coverage_height / feature_upsample)
+
+        flatten = Flatten()(coverage)
+        bboxes_preshape = Dense(bbox_height * bbox_width * 4, activation='linear', name='bboxes_preshape')(flatten)
+        bboxes = Reshape((bbox_height, bbox_width, 4), name='bboxes')(bboxes_preshape)
+
+        return (MobileDetectNetModel(inputs=mobilenet.input,
+                                     outputs=[coverage, bboxes]),
+                                    (coverage_height, coverage_width))
 
     def plot(self, path: str = "mobiledetectnet_plot.png"):
-        from keras.utils import plot_model
+        from tensorflow.keras.utils import plot_model
         plot_model(self, to_file=path, show_shapes=True)
 
     def freeze(self):
@@ -122,5 +147,6 @@ class MobileDetectNetModel(Model):
 
 
 if __name__ == '__main__':
-    model = MobileDetectNetModel.create()
-    model.plot()
+    mobiledetectnet, coverage_shape = MobileDetectNetModel.create()
+    mobiledetectnet.summary()
+    mobiledetectnet.plot()

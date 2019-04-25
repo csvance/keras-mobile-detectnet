@@ -26,6 +26,9 @@ class MobileDetectNetSequence(Sequence):
                  resize_height: int = 224,
                  coverage_width: int = 7,
                  coverage_height: int = 7,
+                 bboxes_width: int = 7,
+                 bboxes_height: int = 7,
+                 feature_upsample: int = 1
                  ):
 
         self.images = []
@@ -41,6 +44,9 @@ class MobileDetectNetSequence(Sequence):
         self.resize_height = resize_height
         self.coverage_width = coverage_width
         self.coverage_height = coverage_height
+        self.bboxes_width = bboxes_width
+        self.bboxes_height = bboxes_height
+        self.feature_upsample = feature_upsample
 
         self.seq = MobileDetectNetSequence.create_augmenter(stage)
 
@@ -54,7 +60,7 @@ class MobileDetectNetSequence(Sequence):
         output_coverage_map = np.zeros((self.batch_size, self.coverage_height, self.coverage_width))
 
         # We need 4 fields for bboxes, but we temporarily use 5 to keep track of which bbox has a better claim
-        output_bboxes = np.zeros((self.batch_size, self.coverage_height, self.coverage_width, 5))
+        output_bboxes = np.zeros((self.batch_size, self.bboxes_height, self.bboxes_width, 5))
 
         for i in range(0, self.batch_size):
 
@@ -101,12 +107,12 @@ class MobileDetectNetSequence(Sequence):
                             area_in = x_in * y_in
 
                             # Prioritize the most dominant box in the coverage tile
-                            if area_in > output_bboxes[i, y, x, 4]:
-                                output_bboxes[i, y, x, 0] = bbox.x1 / self.resize_width
-                                output_bboxes[i, y, x, 1] = bbox.y1 / self.resize_height
-                                output_bboxes[i, y, x, 2] = bbox.x2 / self.resize_width
-                                output_bboxes[i, y, x, 3] = bbox.y2 / self.resize_height
-                                output_bboxes[i, y, x, 4] = area_in
+                            if area_in > output_bboxes[i, int(y/self.feature_upsample), int(x/self.feature_upsample), 4]:
+                                output_bboxes[i, int(y/self.feature_upsample), int(x/self.feature_upsample), 0] = bbox.x1 / self.resize_width
+                                output_bboxes[i, int(y/self.feature_upsample), int(x/self.feature_upsample), 1] = bbox.y1 / self.resize_height
+                                output_bboxes[i, int(y/self.feature_upsample), int(x/self.feature_upsample), 2] = bbox.x2 / self.resize_width
+                                output_bboxes[i, int(y/self.feature_upsample), int(x/self.feature_upsample), 3] = bbox.y2 / self.resize_height
+                                output_bboxes[i, int(y/self.feature_upsample), int(x/self.feature_upsample), 4] = area_in
 
         # Remove the "claim" bbox field so it matches the network output
         output_bboxes = output_bboxes[:, :, :, 0:4]
@@ -188,17 +194,21 @@ class MobileDetectNetSequence(Sequence):
             'option', 'V', str),
     weights=('Weights file to start with', 'option', 'W', str),
     workers=('Number of fit_generator workers', 'option', 'w', int),
-    find_lr=('Instead of training, search for an optimal learning rate', 'flag', None, bool)
+    find_lr=('Instead of training, search for an optimal learning rate', 'flag', None, bool),
+    feature_upsample = ("", "option", "u", int)
 )
-def main(batch_size: int = 24,
+def main(batch_size: int = 32,
          epochs: int = 630,
          train_path: str = 'train',
          val_path: str = 'val',
          weights=None,
          workers: int = 8,
-         find_lr: bool=False):
+         find_lr: bool=False,
+         feature_upsample: int=2):
 
-    mobiledetectnet = MobileDetectNetModel.create()
+    mobiledetectnet, coverage_shape = MobileDetectNetModel.create(feature_upsample=feature_upsample)
+    bboxes_shape = [int(d/2) for d in coverage_shape]
+
     mobiledetectnet.summary()
     mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
 
@@ -207,20 +217,26 @@ def main(batch_size: int = 24,
 
     mobiledetectnet.compile(optimizer=SGD(), loss='mean_absolute_error')
 
-    train_seq = MobileDetectNetSequence(train_path, stage="train", batch_size=batch_size)
-    val_seq = MobileDetectNetSequence(val_path, stage="val", batch_size=batch_size)
+    train_seq = MobileDetectNetSequence(train_path, stage="train", batch_size=batch_size,
+                                        coverage_height=coverage_shape[0], coverage_width=coverage_shape[1],
+                                        bboxes_height=bboxes_shape[0], bboxes_width=bboxes_shape[1],
+                                        feature_upsample=feature_upsample)
+    val_seq = MobileDetectNetSequence(val_path, stage="val", batch_size=batch_size,
+                                      coverage_height=coverage_shape[0], coverage_width=coverage_shape[1],
+                                      bboxes_height=bboxes_shape[0], bboxes_width=bboxes_shape[1],
+                                      feature_upsample=feature_upsample)
 
     if find_lr:
         from lr_finder import LRFinder
         lr_finder = LRFinder(mobiledetectnet)
-        lr_finder.find_generator(train_seq, start_lr=0.00001, end_lr=1, epochs=5)
+        lr_finder.find_generator(train_seq, start_lr=0.000001, end_lr=1, epochs=5)
         lr_finder.plot_loss()
         return
 
     filepath = "weights-{epoch:02d}-{val_bboxes_loss:.4f}-multi-gpu.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_bboxes_loss', verbose=1, save_best_only=True, mode='min')
 
-    sgdr_sched = SGDRScheduler(0.0001, 0.1, steps_per_epoch=np.ceil(len(train_seq) / batch_size))
+    sgdr_sched = SGDRScheduler(0.001, 0.1, steps_per_epoch=np.ceil(len(train_seq) / batch_size))
 
     mobiledetectnet.fit_generator(train_seq,
                                   validation_data=val_seq,

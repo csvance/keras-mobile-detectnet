@@ -1,12 +1,9 @@
 from model import MobileDetectNetModel
-from train import MobileDetectNetSequence
 
 import numpy as np
 import time
 import plac
 import os
-import cv2
-import matplotlib.pyplot as plt
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -18,10 +15,11 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
     input_dims=("Comma seperate input dimensions ie 224, 224, 3", 'option', 'D', str),
     weights_path=("Model weights", 'positional', None, str),
     test_path=("Test images path", 'option', 'I', str),
-    merge=("Merge detected regions", 'flag', 'M', bool),
-    stage=("Augmentation training stage", 'option', 's', str),
-    limit=("Max number of images to run inference on", 'option', 'l', int),
-    confidence=("Minimum confidence in coverage to draw bbox", "option", "c", float)
+    merge=("Test images only: Merge detected regions", 'flag', 'M', bool),
+    stage=("Test images only: Augmentation training stage", 'option', 's', str),
+    limit=("Test images only: Max number of images to run inference on", 'option', 'l', int),
+    confidence=("Test images only: Minimum confidence in coverage to draw bbox", "option", "c", float),
+    feature_upsample=("", "option", "u", int)
 )
 def main(inference_type: str = "K",
          batch_size: int = 1,
@@ -32,17 +30,16 @@ def main(inference_type: str = "K",
          merge: bool = False,
          stage: str = "test",
          limit: int = 20,
-         confidence: float=0.3):
+         confidence: float=0.3,
+         feature_upsample: int=2):
 
-    model = MobileDetectNetModel.create(weights=None)
+    model, coverage_shape = MobileDetectNetModel.create(weights=None, feature_upsample=feature_upsample)
     model.load_weights(weights_path)
 
     test_dims = [int(d) for d in input_dims.split(",")]
 
     images_full = None
     images_input = None
-
-    seq = MobileDetectNetSequence.create_augmenter(stage)
 
     images_done = 0
 
@@ -51,6 +48,13 @@ def main(inference_type: str = "K",
 
         x_test = np.random.random(test_dims)
     else:
+
+        from train import MobileDetectNetSequence
+        import cv2
+        import matplotlib.pyplot as plt
+
+        seq = MobileDetectNetSequence.create_augmenter(stage)
+
         images_full = []
         images_input = []
 
@@ -83,22 +87,22 @@ def main(inference_type: str = "K",
     elif inference_type == 'TF':
         tf_engine = model.tf_engine()
         t0 = time.time()
-        bboxes, coverage = tf_engine.infer(x_test)
+        coverage, bboxes = tf_engine.infer(x_test)
         t1 = time.time()
     elif inference_type == 'FP32':
         tftrt_engine = model.tftrt_engine(precision='FP32', batch_size=batch_size)
         t0 = time.time()
-        bboxes, coverage = tftrt_engine.infer(x_test)
+        coverage, bboxes = tftrt_engine.infer(x_test)
         t1 = time.time()
     elif inference_type == 'FP16':
         tftrt_engine = model.tftrt_engine(precision='FP16', batch_size=batch_size)
         t0 = time.time()
-        bboxes, coverage = tftrt_engine.infer(x_test)
+        coverage, bboxes = tftrt_engine.infer(x_test)
         t1 = time.time()
     elif inference_type == 'INT8':
         tftrt_engine = model.tftrt_engine(precision='INT8', batch_size=batch_size)
         t0 = time.time()
-        bboxes, coverage = tftrt_engine.infer(x_test)
+        coverage, bboxes = tftrt_engine.infer(x_test)
         t1 = time.time()
     else:
         raise Exception("Invalid inference_type")
@@ -109,14 +113,15 @@ def main(inference_type: str = "K",
         for idx in range(0, len(images_full)):
 
             rectangles = []
-            for y in range(0, 7):
-                for x in range(0, 7):
+            for y in range(0, coverage_shape[0]):
+                for x in range(0, coverage_shape[1]):
+
                     if coverage[idx, y, x] > confidence:
 
-                        rect = [int(bboxes[idx, y, x, 0]*test_dims[1]),
-                                int(bboxes[idx, y, x, 1]*test_dims[0]),
-                                int(bboxes[idx, y, x, 2]*test_dims[1]),
-                                int(bboxes[idx, y, x, 3]*test_dims[0])]
+                        rect = [int(bboxes[idx, int(y/feature_upsample), int(x/feature_upsample), 0]*test_dims[1]),
+                                int(bboxes[idx, int(y/feature_upsample), int(x/feature_upsample), 1]*test_dims[0]),
+                                int(bboxes[idx, int(y/feature_upsample), int(x/feature_upsample), 2]*test_dims[1]),
+                                int(bboxes[idx, int(y/feature_upsample), int(x/feature_upsample), 3]*test_dims[0])]
 
                         rectangles.append(rect)
 
@@ -130,7 +135,7 @@ def main(inference_type: str = "K",
                               (0, 1, 0), 3)
 
             plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
-            plt.imshow(cv2.resize(coverage[idx].reshape((7, 7)), (224, 224)),  interpolation='nearest', alpha=0.5)
+            plt.imshow(cv2.resize(coverage[idx].reshape((coverage_shape[0], coverage_shape[1])), (test_dims[1], test_dims[2])),  interpolation='nearest', alpha=0.5)
             plt.show()
 
 

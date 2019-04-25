@@ -3,17 +3,28 @@ import plac
 import matplotlib.pyplot as pyplot
 
 from train import MobileDetectNetSequence
+from model import MobileDetectNetModel
+
 
 @plac.annotations(
     test_path=("Path to images and labels folder", "positional", None, str),
     stage=("Augmentation stage", "option", "S", str),
-    num_images=("Number of images to test", "option", "I", str)
+    num_images=("Number of images to test", "option", "I", str),
+    feature_upsample=("", "option", "U", int)
 )
 def main(test_path: str = "test",
          stage: str = "train",
-         num_images: int = 100):
+         num_images: int = 100,
+         feature_upsample: int = 2):
 
-    generator = MobileDetectNetSequence(test_path, stage=stage, batch_size=num_images)
+    mobiledetectnet, coverage_shape = MobileDetectNetModel.create(feature_upsample=feature_upsample)
+    bboxes_shape = [int(d/feature_upsample) for d in coverage_shape]
+
+    generator = MobileDetectNetSequence(test_path, stage=stage, batch_size=num_images,
+                                        coverage_width=coverage_shape[1], coverage_height=coverage_shape[0],
+                                        bboxes_width=bboxes_shape[1], bboxes_height=bboxes_shape[0],
+                                        feature_upsample=feature_upsample)
+
     images, labels = generator.__getitem__(0)
 
     coverage = labels[0]
@@ -21,14 +32,15 @@ def main(test_path: str = "test",
 
     for i in range(0, num_images):
 
+        # Normalize an image scaled between [-1, 1] to [0, 1]
         image = (images[i] + 1) / 2
 
-        for y in range(0, 7):
-            for x in range(0, 7):
+        for y in range(0, coverage_shape[0]):
+            for x in range(0, coverage_shape[1]):
                 if coverage[i, y, x] > 0:
                     cv2.rectangle(image,
-                                  (int(bboxes[i, y, x, 0]*224), int(bboxes[i, y, x, 1]*224)),
-                                  (int(bboxes[i, y, x, 2]*224), int(bboxes[i, y, x, 3]*224)),
+                                  (int(bboxes[i, int(y/feature_upsample), int(x/feature_upsample), 0]*224), int(bboxes[i, int(y/feature_upsample), int(x/feature_upsample), 1]*224)),
+                                  (int(bboxes[i, int(y/feature_upsample), int(x/feature_upsample), 2]*224), int(bboxes[i, int(y/feature_upsample), int(x/feature_upsample), 3]*224)),
                                   (0, 1, 0), 2)
 
         pyplot.imshow(image, alpha=1.0)
