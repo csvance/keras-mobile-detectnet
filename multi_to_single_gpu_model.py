@@ -9,13 +9,15 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 @plac.annotations(
     input_weights_path=('Path to the weights file', 'positional', None, str),
     output_weights_path=('Path to the single GPU weights file', 'option', 'O', str),
-    model_index=('Index of the layer which contains the single GPU model', 'option', 'I', int)
+    model_index=('Index of the layer which contains the single GPU model', 'option', 'I', int),
+    feature_upsample=('', 'option', 'u', int)
 )
 def main(input_weights_path: str,
          output_weights_path: str = 'mobiledetectnet.h5',
-         model_index: int = -3):
+         model_index: int = -3,
+         feature_upsample: int = 1):
 
-    mobiledetectnet = MobileDetectNetModel.create()
+    mobiledetectnet, coverage_shape = MobileDetectNetModel.create(feature_upsample=feature_upsample)
     mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
     mobiledetectnet.summary()
     mobiledetectnet.load_weights(input_weights_path)

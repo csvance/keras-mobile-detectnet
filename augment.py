@@ -15,7 +15,7 @@ from model import MobileDetectNetModel
 def main(test_path: str = "test",
          stage: str = "train",
          num_images: int = 100,
-         feature_upsample: int = 2):
+         feature_upsample: int = 1):
 
     mobiledetectnet, coverage_shape = MobileDetectNetModel.create(feature_upsample=feature_upsample)
     bboxes_shape = [int(d/feature_upsample) for d in coverage_shape]

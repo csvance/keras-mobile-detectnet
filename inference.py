@@ -30,8 +30,8 @@ def main(inference_type: str = "K",
          merge: bool = False,
          stage: str = "test",
          limit: int = 20,
-         confidence: float=0.3,
-         feature_upsample: int=2):
+         confidence: float = 0.1,
+         feature_upsample: int = 1):
 
     model, coverage_shape = MobileDetectNetModel.create(weights=None, feature_upsample=feature_upsample)
     model.load_weights(weights_path)
@@ -61,16 +61,18 @@ def main(inference_type: str = "K",
         for r, d, f in os.walk(test_path):
             for file in f:
 
-                image_full = cv2.imread(os.path.join(r, file))
-                image_input = cv2.resize(image_full, (test_dims[0], test_dims[1]))
+                for i in range(0, limit):
 
-                seq_det = seq.to_deterministic()
-                image_aug = (seq_det.augment_image(image_input).astype(np.float32) / 127.5) - 1.
+                    image_full = cv2.imread(os.path.join(r, file))
+                    image_input = cv2.resize(image_full, (test_dims[0], test_dims[1]))
 
-                images_full.append(image_full)
-                images_input.append(image_aug)
+                    seq_det = seq.to_deterministic()
+                    image_aug = (seq_det.augment_image(image_input).astype(np.float32) / 127.5) - 1.
 
-                images_done += 1
+                    images_full.append(image_full)
+                    images_input.append(image_aug)
+
+                    images_done += 1
 
                 if images_done == limit:
                     break
@@ -117,11 +119,11 @@ def main(inference_type: str = "K",
                 for x in range(0, coverage_shape[1]):
 
                     if coverage[idx, y, x] > confidence:
-
-                        rect = [int(bboxes[idx, int(y/feature_upsample), int(x/feature_upsample), 0]*test_dims[1]),
-                                int(bboxes[idx, int(y/feature_upsample), int(x/feature_upsample), 1]*test_dims[0]),
-                                int(bboxes[idx, int(y/feature_upsample), int(x/feature_upsample), 2]*test_dims[1]),
-                                int(bboxes[idx, int(y/feature_upsample), int(x/feature_upsample), 3]*test_dims[0])]
+                        rect = [
+                            int(bboxes[idx, int(y / feature_upsample), int(x / feature_upsample), 0] * test_dims[1]),
+                            int(bboxes[idx, int(y / feature_upsample), int(x / feature_upsample), 1] * test_dims[0]),
+                            int(bboxes[idx, int(y / feature_upsample), int(x / feature_upsample), 2] * test_dims[1]),
+                            int(bboxes[idx, int(y / feature_upsample), int(x / feature_upsample), 3] * test_dims[0])]
 
                         rectangles.append(rect)
 
@@ -135,7 +137,9 @@ def main(inference_type: str = "K",
                               (0, 1, 0), 3)
 
             plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
-            plt.imshow(cv2.resize(coverage[idx].reshape((coverage_shape[0], coverage_shape[1])), (test_dims[1], test_dims[2])),  interpolation='nearest', alpha=0.5)
+            plt.imshow(
+                cv2.resize(coverage[idx].reshape((coverage_shape[0], coverage_shape[1])), (x_test.shape[1], x_test.shape[2])),
+                interpolation='nearest', alpha=0.5)
             plt.show()
 
 

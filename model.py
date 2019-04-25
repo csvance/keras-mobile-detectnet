@@ -5,7 +5,7 @@ import os
 from typing import Optional
 
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dense, Flatten, Reshape, UpSampling2D, Conv2D
+from tensorflow.keras.layers import Dense, Flatten, Reshape, UpSampling2D, Conv2D, Dropout, BatchNormalization, Activation, Layer
 import tensorflow.keras as keras
 from tensorflow.keras import backend as K
 import tensorflow as tf
@@ -97,11 +97,150 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
         return y2, y1
 
 
+class TranslationalVariantConv2D(Layer):
+    def __init__(self, **kwargs):
+
+        self.output_dim = None
+
+        super(TranslationalVariantConv2D, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+
+        self.output_dim = tf.TensorShape((input_shape[0], tf.Dimension(7), tf.Dimension(7), tf.Dimension(4)))
+
+        self.kernel = self.add_weight(name='kernel',
+                                      shape=tf.TensorShape((self.output_dim[1], self.output_dim[2], tf.Dimension(2), tf.Dimension(2), tf.Dimension(1), tf.Dimension(4))),
+                                      initializer='uniform',
+                                      trainable=True)
+
+        super(TranslationalVariantConv2D, self).build(input_shape)  # Be sure to call this at the end
+
+    def call(self, x):
+        rows = []
+        cols = []
+        t_0_0 = K.conv2d(x[:, 0 * 2:0 * 2 + 2, 0 * 2:0 * 2 + 2], kernel=self.kernel[0, 0], strides=(2, 2))
+        cols.append(t_0_0)
+        t_0_1 = K.conv2d(x[:, 0 * 2:0 * 2 + 2, 1 * 2:1 * 2 + 2], kernel=self.kernel[0, 1], strides=(2, 2))
+        cols.append(t_0_1)
+        t_0_2 = K.conv2d(x[:, 0 * 2:0 * 2 + 2, 2 * 2:2 * 2 + 2], kernel=self.kernel[0, 2], strides=(2, 2))
+        cols.append(t_0_2)
+        t_0_3 = K.conv2d(x[:, 0 * 2:0 * 2 + 2, 3 * 2:3 * 2 + 2], kernel=self.kernel[0, 3], strides=(2, 2))
+        cols.append(t_0_3)
+        t_0_4 = K.conv2d(x[:, 0 * 2:0 * 2 + 2, 4 * 2:4 * 2 + 2], kernel=self.kernel[0, 4], strides=(2, 2))
+        cols.append(t_0_4)
+        t_0_5 = K.conv2d(x[:, 0 * 2:0 * 2 + 2, 5 * 2:5 * 2 + 2], kernel=self.kernel[0, 5], strides=(2, 2))
+        cols.append(t_0_5)
+        t_0_6 = K.conv2d(x[:, 0 * 2:0 * 2 + 2, 6 * 2:6 * 2 + 2], kernel=self.kernel[0, 6], strides=(2, 2))
+        cols.append(t_0_6)
+        rows.append(K.concatenate(cols, axis=2))
+        cols = []
+        t_1_0 = K.conv2d(x[:, 1 * 2:1 * 2 + 2, 0 * 2:0 * 2 + 2], kernel=self.kernel[1, 0], strides=(2, 2))
+        cols.append(t_1_0)
+        t_1_1 = K.conv2d(x[:, 1 * 2:1 * 2 + 2, 1 * 2:1 * 2 + 2], kernel=self.kernel[1, 1], strides=(2, 2))
+        cols.append(t_1_1)
+        t_1_2 = K.conv2d(x[:, 1 * 2:1 * 2 + 2, 2 * 2:2 * 2 + 2], kernel=self.kernel[1, 2], strides=(2, 2))
+        cols.append(t_1_2)
+        t_1_3 = K.conv2d(x[:, 1 * 2:1 * 2 + 2, 3 * 2:3 * 2 + 2], kernel=self.kernel[1, 3], strides=(2, 2))
+        cols.append(t_1_3)
+        t_1_4 = K.conv2d(x[:, 1 * 2:1 * 2 + 2, 4 * 2:4 * 2 + 2], kernel=self.kernel[1, 4], strides=(2, 2))
+        cols.append(t_1_4)
+        t_1_5 = K.conv2d(x[:, 1 * 2:1 * 2 + 2, 5 * 2:5 * 2 + 2], kernel=self.kernel[1, 5], strides=(2, 2))
+        cols.append(t_1_5)
+        t_1_6 = K.conv2d(x[:, 1 * 2:1 * 2 + 2, 6 * 2:6 * 2 + 2], kernel=self.kernel[1, 6], strides=(2, 2))
+        cols.append(t_1_6)
+        rows.append(K.concatenate(cols, axis=2))
+        cols = []
+        t_2_0 = K.conv2d(x[:, 2 * 2:2 * 2 + 2, 0 * 2:0 * 2 + 2], kernel=self.kernel[2, 0], strides=(2, 2))
+        cols.append(t_2_0)
+        t_2_1 = K.conv2d(x[:, 2 * 2:2 * 2 + 2, 1 * 2:1 * 2 + 2], kernel=self.kernel[2, 1], strides=(2, 2))
+        cols.append(t_2_1)
+        t_2_2 = K.conv2d(x[:, 2 * 2:2 * 2 + 2, 2 * 2:2 * 2 + 2], kernel=self.kernel[2, 2], strides=(2, 2))
+        cols.append(t_2_2)
+        t_2_3 = K.conv2d(x[:, 2 * 2:2 * 2 + 2, 3 * 2:3 * 2 + 2], kernel=self.kernel[2, 3], strides=(2, 2))
+        cols.append(t_2_3)
+        t_2_4 = K.conv2d(x[:, 2 * 2:2 * 2 + 2, 4 * 2:4 * 2 + 2], kernel=self.kernel[2, 4], strides=(2, 2))
+        cols.append(t_2_4)
+        t_2_5 = K.conv2d(x[:, 2 * 2:2 * 2 + 2, 5 * 2:5 * 2 + 2], kernel=self.kernel[2, 5], strides=(2, 2))
+        cols.append(t_2_5)
+        t_2_6 = K.conv2d(x[:, 2 * 2:2 * 2 + 2, 6 * 2:6 * 2 + 2], kernel=self.kernel[2, 6], strides=(2, 2))
+        cols.append(t_2_6)
+        rows.append(K.concatenate(cols, axis=2))
+        cols = []
+        t_3_0 = K.conv2d(x[:, 3 * 2:3 * 2 + 2, 0 * 2:0 * 2 + 2], kernel=self.kernel[3, 0], strides=(2, 2))
+        cols.append(t_3_0)
+        t_3_1 = K.conv2d(x[:, 3 * 2:3 * 2 + 2, 1 * 2:1 * 2 + 2], kernel=self.kernel[3, 1], strides=(2, 2))
+        cols.append(t_3_1)
+        t_3_2 = K.conv2d(x[:, 3 * 2:3 * 2 + 2, 2 * 2:2 * 2 + 2], kernel=self.kernel[3, 2], strides=(2, 2))
+        cols.append(t_3_2)
+        t_3_3 = K.conv2d(x[:, 3 * 2:3 * 2 + 2, 3 * 2:3 * 2 + 2], kernel=self.kernel[3, 3], strides=(2, 2))
+        cols.append(t_3_3)
+        t_3_4 = K.conv2d(x[:, 3 * 2:3 * 2 + 2, 4 * 2:4 * 2 + 2], kernel=self.kernel[3, 4], strides=(2, 2))
+        cols.append(t_3_4)
+        t_3_5 = K.conv2d(x[:, 3 * 2:3 * 2 + 2, 5 * 2:5 * 2 + 2], kernel=self.kernel[3, 5], strides=(2, 2))
+        cols.append(t_3_5)
+        t_3_6 = K.conv2d(x[:, 3 * 2:3 * 2 + 2, 6 * 2:6 * 2 + 2], kernel=self.kernel[3, 6], strides=(2, 2))
+        cols.append(t_3_6)
+        rows.append(K.concatenate(cols, axis=2))
+        cols = []
+        t_4_0 = K.conv2d(x[:, 4 * 2:4 * 2 + 2, 0 * 2:0 * 2 + 2], kernel=self.kernel[4, 0], strides=(2, 2))
+        cols.append(t_4_0)
+        t_4_1 = K.conv2d(x[:, 4 * 2:4 * 2 + 2, 1 * 2:1 * 2 + 2], kernel=self.kernel[4, 1], strides=(2, 2))
+        cols.append(t_4_1)
+        t_4_2 = K.conv2d(x[:, 4 * 2:4 * 2 + 2, 2 * 2:2 * 2 + 2], kernel=self.kernel[4, 2], strides=(2, 2))
+        cols.append(t_4_2)
+        t_4_3 = K.conv2d(x[:, 4 * 2:4 * 2 + 2, 3 * 2:3 * 2 + 2], kernel=self.kernel[4, 3], strides=(2, 2))
+        cols.append(t_4_3)
+        t_4_4 = K.conv2d(x[:, 4 * 2:4 * 2 + 2, 4 * 2:4 * 2 + 2], kernel=self.kernel[4, 4], strides=(2, 2))
+        cols.append(t_4_4)
+        t_4_5 = K.conv2d(x[:, 4 * 2:4 * 2 + 2, 5 * 2:5 * 2 + 2], kernel=self.kernel[4, 5], strides=(2, 2))
+        cols.append(t_4_5)
+        t_4_6 = K.conv2d(x[:, 4 * 2:4 * 2 + 2, 6 * 2:6 * 2 + 2], kernel=self.kernel[4, 6], strides=(2, 2))
+        cols.append(t_4_6)
+        rows.append(K.concatenate(cols, axis=2))
+        cols = []
+        t_5_0 = K.conv2d(x[:, 5 * 2:5 * 2 + 2, 0 * 2:0 * 2 + 2], kernel=self.kernel[5, 0], strides=(2, 2))
+        cols.append(t_5_0)
+        t_5_1 = K.conv2d(x[:, 5 * 2:5 * 2 + 2, 1 * 2:1 * 2 + 2], kernel=self.kernel[5, 1], strides=(2, 2))
+        cols.append(t_5_1)
+        t_5_2 = K.conv2d(x[:, 5 * 2:5 * 2 + 2, 2 * 2:2 * 2 + 2], kernel=self.kernel[5, 2], strides=(2, 2))
+        cols.append(t_5_2)
+        t_5_3 = K.conv2d(x[:, 5 * 2:5 * 2 + 2, 3 * 2:3 * 2 + 2], kernel=self.kernel[5, 3], strides=(2, 2))
+        cols.append(t_5_3)
+        t_5_4 = K.conv2d(x[:, 5 * 2:5 * 2 + 2, 4 * 2:4 * 2 + 2], kernel=self.kernel[5, 4], strides=(2, 2))
+        cols.append(t_5_4)
+        t_5_5 = K.conv2d(x[:, 5 * 2:5 * 2 + 2, 5 * 2:5 * 2 + 2], kernel=self.kernel[5, 5], strides=(2, 2))
+        cols.append(t_5_5)
+        t_5_6 = K.conv2d(x[:, 5 * 2:5 * 2 + 2, 6 * 2:6 * 2 + 2], kernel=self.kernel[5, 6], strides=(2, 2))
+        cols.append(t_5_6)
+        rows.append(K.concatenate(cols, axis=2))
+        cols = []
+        t_6_0 = K.conv2d(x[:, 6 * 2:6 * 2 + 2, 0 * 2:0 * 2 + 2], kernel=self.kernel[6, 0], strides=(2, 2))
+        cols.append(t_6_0)
+        t_6_1 = K.conv2d(x[:, 6 * 2:6 * 2 + 2, 1 * 2:1 * 2 + 2], kernel=self.kernel[6, 1], strides=(2, 2))
+        cols.append(t_6_1)
+        t_6_2 = K.conv2d(x[:, 6 * 2:6 * 2 + 2, 2 * 2:2 * 2 + 2], kernel=self.kernel[6, 2], strides=(2, 2))
+        cols.append(t_6_2)
+        t_6_3 = K.conv2d(x[:, 6 * 2:6 * 2 + 2, 3 * 2:3 * 2 + 2], kernel=self.kernel[6, 3], strides=(2, 2))
+        cols.append(t_6_3)
+        t_6_4 = K.conv2d(x[:, 6 * 2:6 * 2 + 2, 4 * 2:4 * 2 + 2], kernel=self.kernel[6, 4], strides=(2, 2))
+        cols.append(t_6_4)
+        t_6_5 = K.conv2d(x[:, 6 * 2:6 * 2 + 2, 5 * 2:5 * 2 + 2], kernel=self.kernel[6, 5], strides=(2, 2))
+        cols.append(t_6_5)
+        t_6_6 = K.conv2d(x[:, 6 * 2:6 * 2 + 2, 6 * 2:6 * 2 + 2], kernel=self.kernel[6, 6], strides=(2, 2))
+        cols.append(t_6_6)
+        rows.append(K.concatenate(cols, axis=2))
+
+        return K.concatenate(rows, axis=1)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape[0], self.output_dim
+
+
 class MobileDetectNetModel(Model):
     @staticmethod
     def create(input_width: int = 224,
                input_height: int = 224,
-               feature_upsample: int = 2,
+               feature_upsample: int = 1,
                weights: Optional[str] = "imagenet"):
 
         mobilenet = keras.applications.mobilenet.MobileNet(include_top=False,
@@ -112,22 +251,20 @@ class MobileDetectNetModel(Model):
         new_output = mobilenet.get_layer('conv_pw_13_relu').output
 
         if feature_upsample == 1:
-            coverage = Dense(1, activation='sigmoid', name='sigmoid')(new_output)
+            coverage = Conv2D(1, 3, activation='sigmoid', padding='same', name='coverage')(new_output)
         else:
-            choke = Dense(2*feature_upsample, activation='relu', name='choke')(new_output)
-            upsample = UpSampling2D(feature_upsample, 'channels_last', name='up_sampling2d')(choke)
-            coverage = Dense(1, activation='sigmoid', name='coverage')(upsample)
+            choke = Conv2D(4, 3, padding='same', name='choke')(new_output)
+            batchnorm_choke = BatchNormalization(name='batchnorm_choke')(choke)
+            batchnorm_choke_relu = Activation('relu', name='batchnorm_choke_relu')(batchnorm_choke)
+
+            upsample = UpSampling2D(feature_upsample, 'channels_last', name='up_sampling2d')(batchnorm_choke_relu)
+            coverage = Conv2D(1, 1, activation='sigmoid', name='coverage')(upsample)
 
         coverage_height = int(coverage.shape[1])
         coverage_width = int(coverage.shape[2])
 
-        bbox_width = int(coverage_width / feature_upsample)
-        bbox_height = int(coverage_height / feature_upsample)
-
-        flatten = Flatten()(coverage)
-        bboxes_preshape = Dense(bbox_height * bbox_width * 4, activation='linear', name='bboxes_preshape')(flatten)
-        bboxes = Reshape((bbox_height, bbox_width, 4), name='bboxes')(bboxes_preshape)
-
+        #bboxes = Conv2D(4, 2, strides=feature_upsample, activation='linear', name='bboxes')(coverage)
+        bboxes = TranslationalVariantConv2D(name='bboxes')(coverage)
         return (MobileDetectNetModel(inputs=mobilenet.input,
                                      outputs=[coverage, bboxes]),
                                     (coverage_height, coverage_width))
@@ -147,6 +284,6 @@ class MobileDetectNetModel(Model):
 
 
 if __name__ == '__main__':
-    mobiledetectnet, coverage_shape = MobileDetectNetModel.create()
+    mobiledetectnet, coverage_shape = MobileDetectNetModel.create(feature_upsample=2)
     mobiledetectnet.summary()
     mobiledetectnet.plot()

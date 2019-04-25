@@ -102,8 +102,8 @@ class MobileDetectNetSequence(Sequence):
 
                         if np.floor(bx1) <= x <= np.ceil(bx2) and np.floor(by1) <= y <= np.ceil(by2):
 
-                            x_in = max(0, min(x + 1, bx2) - max(x, bx1))
-                            y_in = max(0, min(y + 1, by2) - max(y, by1))
+                            x_in = max(0, min(x + self.feature_upsample, bx2) - max(x, bx1))
+                            y_in = max(0, min(y + self.feature_upsample, by2) - max(y, by1))
                             area_in = x_in * y_in
 
                             # Prioritize the most dominant box in the coverage tile
@@ -171,7 +171,7 @@ class MobileDetectNetSequence(Sequence):
                     iaa.AddToHueAndSaturation((-10, 10)),
                     iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
                     iaa.GaussianBlur(sigma=(0, 1.0)),
-                    iaa.AdditiveGaussianNoise(scale=0.1 * 255)
+                    iaa.AdditiveGaussianNoise(scale=0.05 * 255)
                 ])
             ])
         elif stage == "val":
@@ -197,17 +197,20 @@ class MobileDetectNetSequence(Sequence):
     find_lr=('Instead of training, search for an optimal learning rate', 'flag', None, bool),
     feature_upsample = ("", "option", "u", int)
 )
-def main(batch_size: int = 32,
+def main(batch_size: int = 24,
          epochs: int = 630,
          train_path: str = 'train',
          val_path: str = 'val',
          weights=None,
          workers: int = 8,
          find_lr: bool=False,
-         feature_upsample: int=2):
+         feature_upsample: int = 1):
 
     mobiledetectnet, coverage_shape = MobileDetectNetModel.create(feature_upsample=feature_upsample)
-    bboxes_shape = [int(d/2) for d in coverage_shape]
+    bboxes_shape = [int(d/feature_upsample) for d in coverage_shape]
+
+    print(coverage_shape)
+    print(bboxes_shape)
 
     mobiledetectnet.summary()
     mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
@@ -236,7 +239,7 @@ def main(batch_size: int = 32,
     filepath = "weights-{epoch:02d}-{val_bboxes_loss:.4f}-multi-gpu.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_bboxes_loss', verbose=1, save_best_only=True, mode='min')
 
-    sgdr_sched = SGDRScheduler(0.001, 0.1, steps_per_epoch=np.ceil(len(train_seq) / batch_size))
+    sgdr_sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size))
 
     mobiledetectnet.fit_generator(train_seq,
                                   validation_data=val_seq,
