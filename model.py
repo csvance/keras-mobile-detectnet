@@ -96,7 +96,7 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
 
         return y2, y1
 
-
+# Currently only takes 14, 14, 1 as input and outputs 7, 7, 4
 class ShiftVariantConv2D(Layer):
     def __init__(self, **kwargs):
 
@@ -248,7 +248,7 @@ class MobileDetectNetModel(Model):
 
         new_output = mobilenet.get_layer('conv_pw_13_relu').output
 
-        choke = Conv2D(4, 1, name='choke')(new_output)
+        choke = Conv2D(4, 3, padding='same', name='choke')(new_output)
         batchnorm_choke = BatchNormalization(name='batchnorm_choke')(choke)
         batchnorm_choke_relu = Activation('relu', name='batchnorm_choke_relu')(batchnorm_choke)
 

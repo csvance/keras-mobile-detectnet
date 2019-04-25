@@ -164,7 +164,7 @@ class MobileDetectNetSequence(Sequence):
             return iaa.Sequential([
                 iaa.Fliplr(0.5),
                 iaa.CropAndPad(px=(0, 112), sample_independently=False),
-                iaa.Affine(translate_percent={"x": (-0.5, 0.5), "y": (-0.5, 0.5)}),
+                iaa.Affine(translate_percent={"x": (-0.4, 0.4), "y": (-0.4, 0.4)}),
                 iaa.SomeOf((0, 3), [
                     iaa.AddToHueAndSaturation((-10, 10)),
                     iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
@@ -175,7 +175,7 @@ class MobileDetectNetSequence(Sequence):
         elif stage == "val":
             return iaa.Sequential([
                 iaa.CropAndPad(px=(0, 112), sample_independently=False),
-                iaa.Affine(translate_percent={"x": (-0.5, 0.5), "y": (-0.5, 0.5)}),
+                iaa.Affine(translate_percent={"x": (-0.4, 0.4), "y": (-0.4, 0.4)}),
             ])
         elif stage == "test":
             return iaa.Sequential([])
