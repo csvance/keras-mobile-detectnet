@@ -198,7 +198,7 @@ class MobileDetectNetSequence(Sequence):
     feature_upsample = ("", "option", "u", int)
 )
 def main(batch_size: int = 24,
-         epochs: int = 630,
+         epochs: int = 460,
          train_path: str = 'train',
          val_path: str = 'val',
          weights=None,
@@ -239,7 +239,7 @@ def main(batch_size: int = 24,
     filepath = "weights-{epoch:02d}-{val_bboxes_loss:.4f}-multi-gpu.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_bboxes_loss', verbose=1, save_best_only=True, mode='min')
 
-    sgdr_sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size))
+    sgdr_sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size), mult_factor=1.2)
 
     mobiledetectnet.fit_generator(train_seq,
                                   validation_data=val_seq,

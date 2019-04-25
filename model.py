@@ -107,13 +107,12 @@ class TranslationalVariantConv2D(Layer):
     def build(self, input_shape):
 
         self.output_dim = tf.TensorShape((input_shape[0], tf.Dimension(7), tf.Dimension(7), tf.Dimension(4)))
-
         self.kernel = self.add_weight(name='kernel',
                                       shape=tf.TensorShape((self.output_dim[1], self.output_dim[2], tf.Dimension(2), tf.Dimension(2), tf.Dimension(1), tf.Dimension(4))),
                                       initializer='uniform',
                                       trainable=True)
 
-        super(TranslationalVariantConv2D, self).build(input_shape)  # Be sure to call this at the end
+        super(TranslationalVariantConv2D, self).build(input_shape)
 
     def call(self, x):
         rows = []
@@ -263,8 +262,11 @@ class MobileDetectNetModel(Model):
         coverage_height = int(coverage.shape[1])
         coverage_width = int(coverage.shape[2])
 
-        #bboxes = Conv2D(4, 2, strides=feature_upsample, activation='linear', name='bboxes')(coverage)
-        bboxes = TranslationalVariantConv2D(name='bboxes')(coverage)
+        if feature_upsample == 1:
+            bboxes = Conv2D(4, 2, strides=feature_upsample, activation='linear', name='bboxes')(coverage)
+        else:
+            bboxes = TranslationalVariantConv2D(name='bboxes')(coverage)
+
         return (MobileDetectNetModel(inputs=mobilenet.input,
                                      outputs=[coverage, bboxes]),
                                     (coverage_height, coverage_width))
