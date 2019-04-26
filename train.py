@@ -31,6 +31,7 @@ class MobileDetectNetSequence(Sequence):
                  ):
 
         self.images = []
+        self.images_filenames = []
         self.labels = []
 
         for r, d, f in os.walk(os.path.join(path, "images")):
@@ -59,6 +60,7 @@ class MobileDetectNetSequence(Sequence):
 
         # We need 4 fields for bboxes, but we temporarily use 5 to keep track of which bbox has a better claim
         output_bboxes = np.zeros((self.batch_size, self.bboxes_height, self.bboxes_width, 5))
+        output_bboxes_center = np.zeros((self.batch_size, self.bboxes_height, self.bboxes_width, 4))
 
         for i in range(0, self.batch_size):
 
@@ -105,19 +107,27 @@ class MobileDetectNetSequence(Sequence):
                             area_in = x_in * y_in
 
                             # Prioritize the most dominant box in the coverage tile
-                            if area_in > output_bboxes[i, int(y/2), int(x/2), 4]:
+                            if 3.0 <= area_in > output_bboxes[i, int(y/2), int(x/2), 4]:
                                 output_bboxes[i, int(y/2), int(x/2), 0] = bbox.x1 / self.resize_width
                                 output_bboxes[i, int(y/2), int(x/2), 1] = bbox.y1 / self.resize_height
                                 output_bboxes[i, int(y/2), int(x/2), 2] = bbox.x2 / self.resize_width
                                 output_bboxes[i, int(y/2), int(x/2), 3] = bbox.y2 / self.resize_height
                                 output_bboxes[i, int(y/2), int(x/2), 4] = area_in
 
+                bbox_center_x = int(self.coverage_width/2 * ((bbox.x2 + bbox.x1) / 2) / self.resize_width)
+                bbox_center_y = int(self.coverage_height/2 * ((bbox.y2 + bbox.y1) / 2) / self.resize_height)
+
+                output_bboxes_center[i, bbox_center_x, bbox_center_y, 0] = bbox.x1 / self.resize_width
+                output_bboxes_center[i, bbox_center_x, bbox_center_y, 1] = bbox.y1 / self.resize_height
+                output_bboxes_center[i, bbox_center_x, bbox_center_y, 2] = bbox.x2 / self.resize_width
+                output_bboxes_center[i, bbox_center_x, bbox_center_y, 3] = bbox.y2 / self.resize_height
+
         # Remove the "claim" bbox field so it matches the network output
         output_bboxes = output_bboxes[:, :, :, 0:4]
 
         return input_image, [
             output_coverage_map.reshape((self.batch_size, self.coverage_height, self.coverage_width, 1)),
-            output_bboxes]
+            output_bboxes, output_bboxes_center]
 
     @staticmethod
     # KITTI Format Labels

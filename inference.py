@@ -79,7 +79,7 @@ def main(inference_type: str = "K",
 
     if inference_type == 'K':
         t0 = time.time()
-        coverage, bboxes = model.predict(x_test)
+        coverage, bboxes, bboxes_center = model.predict(x_test)
         t1 = time.time()
     elif inference_type == 'TF':
         tf_engine = model.tf_engine()
@@ -115,15 +115,15 @@ def main(inference_type: str = "K",
 
                     if coverage[idx, y, x] > confidence:
                         rect = [
-                            int(bboxes[idx, int(y / 2), int(x / 2), 0] * test_dims[1]),
-                            int(bboxes[idx, int(y / 2), int(x / 2), 1] * test_dims[0]),
-                            int(bboxes[idx, int(y / 2), int(x / 2), 2] * test_dims[1]),
-                            int(bboxes[idx, int(y / 2), int(x / 2), 3] * test_dims[0])]
+                            int(bboxes_center[idx, int(y / 2), int(x / 2), 0] * test_dims[1]),
+                            int(bboxes_center[idx, int(y / 2), int(x / 2), 1] * test_dims[0]),
+                            int(bboxes_center[idx, int(y / 2), int(x / 2), 2] * test_dims[1]),
+                            int(bboxes_center[idx, int(y / 2), int(x / 2), 3] * test_dims[0])]
 
                         rectangles.append(rect)
 
             if merge:
-                rectangles, merges = cv2.groupRectangles(rectangles, 1, eps=0.3)
+                rectangles, merges = cv2.groupRectangles(rectangles, 1, eps=0.75)
 
             for rect in rectangles:
                 cv2.rectangle(images_input[idx],

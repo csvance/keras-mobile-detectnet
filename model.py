@@ -5,9 +5,10 @@ import os
 from typing import Optional
 
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dense, UpSampling2D, Conv2D, BatchNormalization, Activation, Layer
+from tensorflow.keras.layers import Dense, UpSampling2D, Conv2D, BatchNormalization, Activation, Layer, Lambda
 import tensorflow.keras as keras
 from tensorflow.keras import backend as K
+from keras.utils.generic_utils import get_custom_objects
 import tensorflow as tf
 from tensorflow.contrib import tensorrt as tftrt
 
@@ -258,10 +259,18 @@ class MobileDetectNetModel(Model):
         coverage_height = int(coverage.shape[1])
         coverage_width = int(coverage.shape[2])
 
+        # Convolution with stride 2, 2 and 2, 2 kernel with unique weights for every dot product
+        # Because it has unique weights, its able to generate proposals in a translationaly variant manner
         bboxes = ShiftVariantConv2D(name='bboxes')(coverage)
 
+        # The point of this layer is to do average bounding box clustering
+        bboxes_center = Conv2D(4, 3,
+                               padding='same',
+                               name='bboxes_center',
+                               activation='linear')(bboxes)
+
         return (MobileDetectNetModel(inputs=mobilenet.input,
-                                     outputs=[coverage, bboxes]),
+                                     outputs=[coverage, bboxes, bboxes_center]),
                                     (coverage_height, coverage_width))
 
     def plot(self, path: str = "mobiledetectnet_plot.png"):
