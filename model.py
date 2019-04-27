@@ -139,7 +139,7 @@ class BBoxRegressor(Layer):
         super(BBoxRegressor, self).build(input_shape)
 
     def call(self, x):
-        
+
         x = tf.stack([
             tf.math.multiply(x[:, :, :, 0], self.mult_x_kernel),
             tf.math.multiply(x[:, :, :, 1], self.mult_y_kernel),

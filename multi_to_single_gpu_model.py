@@ -18,7 +18,7 @@ def main(input_weights_path: str,
 
     if model is None or model == "complete":
         keras_model = MobileDetectNetModel.complete_model()
-        model_index = -2
+        model_index = -4
     elif model == "coverage":
         keras_model = MobileDetectNetModel.coverage_model()
         model_index = -2

@@ -137,11 +137,13 @@ class MobileDetectNetSequence(Sequence):
                             if iou > output_region[i, y, x, k, 0]:
                                 output_region[i, int(y), int(x), k, 0] = iou
 
-                                if iou > 0.7:
+                                if iou > 0.3:
                                     output_bboxes[i, int(y), int(x), 0] = bbox.x1 / self.coverage_width
                                     output_bboxes[i, int(y), int(x), 1] = bbox.y1 / self.coverage_height
                                     output_bboxes[i, int(y), int(x), 2] = bbox.x2 / self.coverage_width
                                     output_bboxes[i, int(y), int(x), 3] = bbox.y2 / self.coverage_height
+
+                                if iou > 0.7:
                                     output_region[i, int(y), int(x), 0] = 1
 
             for y in range(0, self.coverage_height):

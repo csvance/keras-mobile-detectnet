@@ -44,11 +44,6 @@ def main(inference_type: str = "K",
         regions, _ = MobileDetectNetModel.region(coverage)
 
         keras_model = keras.models.Model(inputs=cnn.input, outputs=[coverage, regions])
-        keras_model.summary()
-
-        keras_model.load_weights('region.hdf5', by_name=True)
-        keras_model.load_weights('coverage.hdf5', by_name=True)
-
     elif model == 'pooling':
         raise Exception("Not implemented")
     else:
@@ -56,9 +51,9 @@ def main(inference_type: str = "K",
 
     if multi_gpu_weights is not None:
         keras_model = keras.utils.multi_gpu_model(keras_model, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
-        keras_model.load_weights(multi_gpu_weights)
+        keras_model.load_weights(multi_gpu_weights, by_name=True)
     elif weights is not None:
-        keras_model.load_weights(weights)
+        keras_model.load_weights(weights, by_name=True)
 
     images_done = 0
 
@@ -119,7 +114,7 @@ def main(inference_type: str = "K",
 
     if model == 'complete':
 
-        coverage, bboxes, bboxes_center = model_outputs
+        coverage, regions, bboxes = model_outputs
 
         if images_full is not None:
             for idx in range(0, len(images_full)):
@@ -128,54 +123,7 @@ def main(inference_type: str = "K",
                 for y in range(0, 14):
                     for x in range(0, 14):
 
-                        if coverage[idx, y, x] > confidence:
-                            rect = [
-                                int(bboxes_center[idx, int(y), int(x), 0] * 224),
-                                int(bboxes_center[idx, int(y), int(x), 1] * 224),
-                                int(bboxes_center[idx, int(y), int(x), 2] * 224),
-                                int(bboxes_center[idx, int(y), int(x), 3] * 224)]
-
-                            rectangles.append(rect)
-
-                if merge:
-                    rectangles, merges = cv2.groupRectangles(rectangles, 1, eps=0.75)
-
-                for rect in rectangles:
-                    cv2.rectangle(images_input[idx],
-                                  (rect[0], rect[1]),
-                                  (rect[2], rect[3]),
-                                  (0, 1, 0), 3)
-
-                plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
-                plt.imshow(
-                    cv2.resize(coverage[idx].reshape((14, 14)),
-                               (x_test.shape[1], x_test.shape[2])),
-                    interpolation='nearest', alpha=0.5)
-                plt.show()
-
-    elif model == 'coverage':
-        coverage = model_outputs
-
-        if images_full is not None:
-            for idx in range(0, len(images_full)):
-                plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
-                plt.imshow(
-                    cv2.resize(coverage[idx].reshape((14, 14)),
-                               (x_test.shape[1], x_test.shape[2])),
-                    interpolation='nearest', alpha=0.5)
-                plt.show()
-
-    elif model == 'region':
-        coverage, bboxes = model_outputs
-
-        if images_full is not None:
-            for idx in range(0, len(images_full)):
-
-                rectangles = []
-                for y in range(0, 14):
-                    for x in range(0, 14):
-
-                        if coverage[idx, y, x] > confidence:
+                        if coverage[idx, y, x] >= confidence:
                             rect = [
                                 int(bboxes[idx, int(y), int(x), 0] * 224),
                                 int(bboxes[idx, int(y), int(x), 1] * 224),
@@ -194,8 +142,39 @@ def main(inference_type: str = "K",
                                   (0, 1, 0), 3)
 
                 plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
+
+                #plt.imshow(
+                #    cv2.resize(coverage[idx].reshape((14, 14)),
+                #               (x_test.shape[1], x_test.shape[2])),
+                #    interpolation=cv2.INTER_NEAREST, alpha=0.5)
+
+                plt.imshow(
+                    cv2.resize(np.max(regions[idx], axis=-1).reshape((14, 14)) / 16,
+                               (x_test.shape[1], x_test.shape[2])),
+                    interpolation='nearest', alpha=0.5)
+                plt.show()
+
+    elif model == 'coverage':
+        coverage = model_outputs
+
+        if images_full is not None:
+            for idx in range(0, len(images_full)):
+                plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
                 plt.imshow(
                     cv2.resize(coverage[idx].reshape((14, 14)),
+                               (x_test.shape[1], x_test.shape[2])),
+                    interpolation='nearest', alpha=0.5)
+                plt.show()
+
+    elif model == "region":
+        coverage, regions = model_outputs
+
+        if images_full is not None:
+            for idx in range(0, len(images_full)):
+
+                plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
+                plt.imshow(
+                    cv2.resize(np.max(regions[idx], axis=-1).reshape((14, 14)) / 16,
                                (x_test.shape[1], x_test.shape[2])),
                     interpolation='nearest', alpha=0.5)
                 plt.show()
