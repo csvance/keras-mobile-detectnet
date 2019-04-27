@@ -20,6 +20,7 @@ from sgdr import SGDRScheduler
 class MobileDetectNetSequence(Sequence):
     def __init__(self,
                  path: str,
+                 model: str = None,
                  stage: str = "train",
                  batch_size: int = 12,
                  resize_width: int = 224,
@@ -29,6 +30,8 @@ class MobileDetectNetSequence(Sequence):
                  bboxes_width: int = 7,
                  bboxes_height: int = 7
                  ):
+
+        self.model = model
 
         self.images = []
         self.images_filenames = []
@@ -107,27 +110,36 @@ class MobileDetectNetSequence(Sequence):
                             area_in = x_in * y_in
 
                             # Prioritize the most dominant box in the coverage tile
-                            if 3.0 <= area_in > output_bboxes[i, int(y/2), int(x/2), 4]:
-                                output_bboxes[i, int(y/2), int(x/2), 0] = bbox.x1 / self.resize_width
-                                output_bboxes[i, int(y/2), int(x/2), 1] = bbox.y1 / self.resize_height
-                                output_bboxes[i, int(y/2), int(x/2), 2] = bbox.x2 / self.resize_width
-                                output_bboxes[i, int(y/2), int(x/2), 3] = bbox.y2 / self.resize_height
-                                output_bboxes[i, int(y/2), int(x/2), 4] = area_in
+                            if 3.0 <= area_in > output_bboxes[i, int(y / 2), int(x / 2), 4]:
+                                output_bboxes[i, int(y / 2), int(x / 2), 0] = bbox.x1 / self.resize_width
+                                output_bboxes[i, int(y / 2), int(x / 2), 1] = bbox.y1 / self.resize_height
+                                output_bboxes[i, int(y / 2), int(x / 2), 2] = bbox.x2 / self.resize_width
+                                output_bboxes[i, int(y / 2), int(x / 2), 3] = bbox.y2 / self.resize_height
+                                output_bboxes[i, int(y / 2), int(x / 2), 4] = area_in
 
-                bbox_center_x = int(self.coverage_width/2 * ((bbox.x2 + bbox.x1) / 2) / self.resize_width)
-                bbox_center_y = int(self.coverage_height/2 * ((bbox.y2 + bbox.y1) / 2) / self.resize_height)
+                bbox_center_x = int(self.coverage_width / 2 * ((bbox.x2 + bbox.x1) / 2) / self.resize_width)
+                bbox_center_y = int(self.coverage_height / 2 * ((bbox.y2 + bbox.y1) / 2) / self.resize_height)
 
-                output_bboxes_center[i, bbox_center_x, bbox_center_y, 0] = bbox.x1 / self.resize_width
-                output_bboxes_center[i, bbox_center_x, bbox_center_y, 1] = bbox.y1 / self.resize_height
-                output_bboxes_center[i, bbox_center_x, bbox_center_y, 2] = bbox.x2 / self.resize_width
-                output_bboxes_center[i, bbox_center_x, bbox_center_y, 3] = bbox.y2 / self.resize_height
+                output_bboxes_center[i, bbox_center_y, bbox_center_x, 0] = bbox.x1 / self.resize_width
+                output_bboxes_center[i, bbox_center_y, bbox_center_x, 1] = bbox.y1 / self.resize_height
+                output_bboxes_center[i, bbox_center_y, bbox_center_x, 2] = bbox.x2 / self.resize_width
+                output_bboxes_center[i, bbox_center_y, bbox_center_x, 3] = bbox.y2 / self.resize_height
 
         # Remove the "claim" bbox field so it matches the network output
         output_bboxes = output_bboxes[:, :, :, 0:4]
 
-        return input_image, [
-            output_coverage_map.reshape((self.batch_size, self.coverage_height, self.coverage_width, 1)),
-            output_bboxes, output_bboxes_center]
+        if self.model is None or self.model == "complete":
+            return input_image, [
+                output_coverage_map.reshape((self.batch_size, self.coverage_height, self.coverage_width, 1)),
+                output_bboxes, output_bboxes_center]
+        elif self.model == "coverage":
+            return input_image, [
+                output_coverage_map.reshape((self.batch_size, self.coverage_height, self.coverage_width, 1))]
+        elif self.model == "region":
+            return output_coverage_map.reshape(
+                (self.batch_size, self.coverage_height, self.coverage_width, 1)), output_bboxes
+        elif self.model == "pooling":
+            return output_bboxes, output_bboxes_center
 
     @staticmethod
     # KITTI Format Labels
@@ -201,56 +213,87 @@ class MobileDetectNetSequence(Sequence):
             'Path to the validation folder which contains both an images and labels folder with KITTI labels',
             'option', 'V', str),
     weights=('Weights file to start with', 'option', 'W', str),
+    multi_gpu_weights=('Weights file to start with for the multi GPU model', 'option', 'G', str),
     workers=('Number of fit_generator workers', 'option', 'w', int),
     find_lr=('Instead of training, search for an optimal learning rate', 'flag', None, bool),
+    model=('Which model architecture to train (complete, coverage, regions, pooling)', 'option', 'M', str)
 )
 def main(batch_size: int = 24,
          epochs: int = 384,
          train_path: str = 'train',
          val_path: str = 'val',
+         model: str = 'complete',
+         multi_gpu_weights=None,
          weights=None,
          workers: int = 8,
-         find_lr: bool=False):
+         find_lr: bool = False):
 
-    mobiledetectnet, coverage_shape = MobileDetectNetModel.create()
-    bboxes_shape = [int(d/2) for d in coverage_shape]
+    if model is None or model == "complete":
+        keras_model = MobileDetectNetModel.complete_model()
+        raise Exception("Not implemented yet!")
+    elif model == "coverage":
+        keras_model = MobileDetectNetModel.coverage_model()
+    elif model == "region":
+        keras_model = MobileDetectNetModel.region_model()
+        raise Exception("Not implemented yet!")
+    elif model == "pooling":
+        keras_model = MobileDetectNetModel.pooling_model()
+        raise Exception("Not implemented yet!")
+    else:
+        raise Exception("Invalid mode: %s" % model)
 
-    mobiledetectnet.summary()
-    mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
-
+    keras_model.summary()
     if weights is not None:
-        mobiledetectnet.load_weights(weights)
+        keras_model.load_weights(weights)
 
-    mobiledetectnet.compile(optimizer=SGD(), loss='mean_absolute_error')
+    coverage_shape = [14, 14]
+    bboxes_shape = [14, 14]
 
     train_seq = MobileDetectNetSequence(train_path, stage="train", batch_size=batch_size,
                                         coverage_height=coverage_shape[0], coverage_width=coverage_shape[1],
-                                        bboxes_height=bboxes_shape[0], bboxes_width=bboxes_shape[1])
+                                        bboxes_height=bboxes_shape[0], bboxes_width=bboxes_shape[1],
+                                        model=model)
     val_seq = MobileDetectNetSequence(val_path, stage="val", batch_size=batch_size,
                                       coverage_height=coverage_shape[0], coverage_width=coverage_shape[1],
-                                      bboxes_height=bboxes_shape[0], bboxes_width=bboxes_shape[1])
+                                      bboxes_height=bboxes_shape[0], bboxes_width=bboxes_shape[1],
+                                      model=model)
+
+    keras_model = keras.utils.multi_gpu_model(keras_model, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
+    if multi_gpu_weights is not None:
+        keras_model.load_weights(multi_gpu_weights)
+
+    if model is None or model == "complete":
+        raise Exception("Not implemented yet!")
+    elif model == "coverage":
+        keras_model.compile(optimizer=SGD(), loss='mean_absolute_error')
+    elif model == "region":
+        raise Exception("Not implemented yet!")
+    elif model == "pooling":
+        raise Exception("Not implemented yet!")
+    else:
+        raise Exception("Invalid mode: %s" % model)
 
     if find_lr:
         from lr_finder import LRFinder
-        lr_finder = LRFinder(mobiledetectnet)
+        lr_finder = LRFinder(keras_model)
         lr_finder.find_generator(train_seq, start_lr=0.000001, end_lr=1, epochs=5)
         lr_finder.plot_loss()
         return
 
-    filepath = "weights-{epoch:02d}-{val_bboxes_loss:.4f}-multi-gpu.hdf5"
-    checkpoint = ModelCheckpoint(filepath, monitor='val_bboxes_loss', verbose=1, save_best_only=True, mode='min')
+    filepath = "weights-%s-{epoch:02d}-{val_loss:.4f}-multi-gpu.hdf5" % model
+    checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
 
     sgdr_sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size), mult_factor=1.5)
 
-    mobiledetectnet.fit_generator(train_seq,
-                                  validation_data=val_seq,
-                                  epochs=epochs,
-                                  steps_per_epoch=np.ceil(len(train_seq) / batch_size),
-                                  validation_steps=np.ceil(len(val_seq) / batch_size),
-                                  callbacks=[checkpoint, sgdr_sched],
-                                  use_multiprocessing=True,
-                                  workers=workers,
-                                  shuffle=True)
+    keras_model.fit_generator(train_seq,
+                        validation_data=val_seq,
+                        epochs=epochs,
+                        steps_per_epoch=np.ceil(len(train_seq) / batch_size),
+                        validation_steps=np.ceil(len(val_seq) / batch_size),
+                        callbacks=[checkpoint, sgdr_sched],
+                        use_multiprocessing=True,
+                        workers=workers,
+                        shuffle=True)
 
 
 if __name__ == '__main__':

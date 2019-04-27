@@ -15,8 +15,8 @@ def main(test_path: str = "test",
          stage: str = "train",
          num_images: int = 100):
 
-    mobiledetectnet, coverage_shape = MobileDetectNetModel.create()
-    bboxes_shape = [int(d/2) for d in coverage_shape]
+    coverage_shape = [14, 14]
+    bboxes_shape = [14, 14]
 
     generator = MobileDetectNetSequence(test_path, stage=stage, batch_size=num_images,
                                         coverage_width=coverage_shape[1], coverage_height=coverage_shape[0],
