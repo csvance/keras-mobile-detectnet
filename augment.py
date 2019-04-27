@@ -36,8 +36,8 @@ def main(test_path: str = "test",
             for x in range(0, coverage_shape[1]):
                 if coverage[i, y, x] > 0:
                     cv2.rectangle(image,
-                                  (int(bboxes[i, int(y/2), int(x/2), 0]*224), int(bboxes[i, int(y/2), int(x/2), 1]*224)),
-                                  (int(bboxes[i, int(y/2), int(x/2), 2]*224), int(bboxes[i, int(y/2), int(x/2), 3]*224)),
+                                  (int(bboxes[i, int(y), int(x), 0]*224), int(bboxes[i, int(y), int(x), 1]*224)),
+                                  (int(bboxes[i, int(y), int(x), 2]*224), int(bboxes[i, int(y), int(x), 3]*224)),
                                   (0, 1, 0), 2)
 
         pyplot.imshow(image, alpha=1.0)

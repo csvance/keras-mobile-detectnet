@@ -14,10 +14,8 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 @plac.annotations(
     inference_type=("Type of inference to test (TF, FP32, FP16, INT8)", 'option', 'T', str),
     batch_size=("Size of the TensorRT batch", 'option', 'B', int),
-    test_size=("Number of samples run the inference on", 'option', 'S', int),
-    input_dims=("Comma seperate input dimensions ie 224, 224, 3", 'option', 'D', str),
-    weights=("Model weights", 'positional', 'W', str),
-    multi_gpu_weights=("Model weights", 'positional', 'G', str),
+    weights=("Model weights", 'option', 'W', str),
+    multi_gpu_weights=("Multi GPU model weights", 'option', 'G', str),
     test_path=("Test images path", 'option', 'I', str),
     merge=("Test images only: Merge detected regions", 'flag', 'm', bool),
     stage=("Test images only: Augmentation training stage", 'option', 's', str),
@@ -28,7 +26,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 def main(inference_type: str = "K",
          batch_size: int = 1,
          test_path: str = None,
-         weights: str = "mobiledetectnet.h5",
+         weights: str = None,
          multi_gpu_weights: str = None,
          merge: bool = False,
          stage: str = "test",
@@ -44,6 +42,8 @@ def main(inference_type: str = "K",
         raise Exception("Not implemented")
     elif model == 'pooling':
         raise Exception("Not implemented")
+    else:
+        raise Exception("Invalid model")
 
     if multi_gpu_weights is not None:
         keras_model = keras.utils.multi_gpu_model(keras_model, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
@@ -81,25 +81,25 @@ def main(inference_type: str = "K",
 
     if inference_type == 'K':
         t0 = time.time()
-        model_outputs = model.predict(x_test)
+        model_outputs = keras_model.predict(x_test)
         t1 = time.time()
     elif inference_type == 'TF':
-        tf_engine = model.tf_engine()
+        tf_engine = keras_model.tf_engine()
         t0 = time.time()
         model_outputs = tf_engine.infer(x_test)
         t1 = time.time()
     elif inference_type == 'FP32':
-        tftrt_engine = model.tftrt_engine(precision='FP32', batch_size=batch_size)
+        tftrt_engine = keras_model.tftrt_engine(precision='FP32', batch_size=batch_size)
         t0 = time.time()
         model_outputs = tftrt_engine.infer(x_test)
         t1 = time.time()
     elif inference_type == 'FP16':
-        tftrt_engine = model.tftrt_engine(precision='FP16', batch_size=batch_size)
+        tftrt_engine = keras_model.tftrt_engine(precision='FP16', batch_size=batch_size)
         t0 = time.time()
         model_outputs = tftrt_engine.infer(x_test)
         t1 = time.time()
     elif inference_type == 'INT8':
-        tftrt_engine = model.tftrt_engine(precision='INT8', batch_size=batch_size)
+        tftrt_engine = keras_model.tftrt_engine(precision='INT8', batch_size=batch_size)
         t0 = time.time()
         model_outputs = tftrt_engine.infer(x_test)
         t1 = time.time()

@@ -105,20 +105,20 @@ class MobileDetectNetSequence(Sequence):
 
                         if np.floor(bx1) <= x <= np.ceil(bx2) and np.floor(by1) <= y <= np.ceil(by2):
 
-                            x_in = max(0, min(x + 2, bx2) - max(x, bx1))
-                            y_in = max(0, min(y + 2, by2) - max(y, by1))
+                            x_in = max(0, min(x + 1, bx2) - max(x, bx1))
+                            y_in = max(0, min(y + 1, by2) - max(y, by1))
                             area_in = x_in * y_in
 
                             # Prioritize the most dominant box in the coverage tile
-                            if 3.0 <= area_in > output_bboxes[i, int(y / 2), int(x / 2), 4]:
-                                output_bboxes[i, int(y / 2), int(x / 2), 0] = bbox.x1 / self.resize_width
-                                output_bboxes[i, int(y / 2), int(x / 2), 1] = bbox.y1 / self.resize_height
-                                output_bboxes[i, int(y / 2), int(x / 2), 2] = bbox.x2 / self.resize_width
-                                output_bboxes[i, int(y / 2), int(x / 2), 3] = bbox.y2 / self.resize_height
-                                output_bboxes[i, int(y / 2), int(x / 2), 4] = area_in
+                            if 0.75 <= area_in > output_bboxes[i, y, x, 4]:
+                                output_bboxes[i, int(y), int(x), 0] = bbox.x1 / self.resize_width
+                                output_bboxes[i, int(y), int(x), 1] = bbox.y1 / self.resize_height
+                                output_bboxes[i, int(y), int(x), 2] = bbox.x2 / self.resize_width
+                                output_bboxes[i, int(y), int(x), 3] = bbox.y2 / self.resize_height
+                                output_bboxes[i, int(y), int(x), 4] = area_in
 
-                bbox_center_x = int(self.coverage_width / 2 * ((bbox.x2 + bbox.x1) / 2) / self.resize_width)
-                bbox_center_y = int(self.coverage_height / 2 * ((bbox.y2 + bbox.y1) / 2) / self.resize_height)
+                bbox_center_x = int(self.coverage_width * ((bbox.x2 + bbox.x1) / 2) / self.resize_width)
+                bbox_center_y = int(self.coverage_height * ((bbox.y2 + bbox.y1) / 2) / self.resize_height)
 
                 output_bboxes_center[i, bbox_center_y, bbox_center_x, 0] = bbox.x1 / self.resize_width
                 output_bboxes_center[i, bbox_center_y, bbox_center_x, 1] = bbox.y1 / self.resize_height

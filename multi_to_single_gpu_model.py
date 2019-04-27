@@ -14,8 +14,8 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 )
 def main(input_weights_path: str,
-         output_weights_path: str = 'mobiledetectnet.h5',
-         model_index: int = -4,
+         output_weights_path: str = None,
+         model_index: int = -2,
          model="complete"):
 
     if model is None or model == "complete":
@@ -37,6 +37,9 @@ def main(input_weights_path: str,
     keras_model.load_weights(input_weights_path)
 
     single_gpu_model = keras_model.layers[model_index]
+
+    output_weights_path = "%s.hdf5" % model if output_weights_path is None else output_weights_path
+
     single_gpu_model.save_weights(output_weights_path)
 
 
