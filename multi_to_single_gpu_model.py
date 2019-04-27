@@ -9,26 +9,25 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 @plac.annotations(
     input_weights_path=('Path to the weights file', 'positional', None, str),
     output_weights_path=('Path to the single GPU weights file', 'option', 'O', str),
-    model_index=('Index of the layer which contains the single GPU model', 'option', 'I', int),
     model=('Which model architecture to train (complete, coverage, regions, pooling)', 'option', 'M', str)
 
 )
 def main(input_weights_path: str,
          output_weights_path: str = None,
-         model_index: int = -2,
          model="complete"):
 
     if model is None or model == "complete":
         keras_model = MobileDetectNetModel.complete_model()
-        raise Exception("Not implemented yet!")
+        model_index = -2
     elif model == "coverage":
         keras_model = MobileDetectNetModel.coverage_model()
+        model_index = -2
     elif model == "region":
         keras_model = MobileDetectNetModel.region_model()
-        raise Exception("Not implemented yet!")
+        model_index = -2
     elif model == "pooling":
         keras_model = MobileDetectNetModel.pooling_model()
-        raise Exception("Not implemented yet!")
+        model_index = -2
     else:
         raise Exception("Invalid mode: %s" % model)
 

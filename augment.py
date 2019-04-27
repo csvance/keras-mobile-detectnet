@@ -25,7 +25,8 @@ def main(test_path: str = "test",
     images, labels = generator.__getitem__(0)
 
     coverage = labels[0]
-    bboxes = labels[1]
+    regions = labels[1]
+    bboxes = labels[2]
 
     for i in range(0, num_images):
 

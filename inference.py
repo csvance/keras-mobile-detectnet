@@ -35,11 +35,20 @@ def main(inference_type: str = "K",
          model="complete"):
 
     if model is None or model == 'complete':
-        raise Exception("Not implemented")
+        keras_model = MobileDetectNetModel.complete_model()
     elif model == 'coverage':
         keras_model = MobileDetectNetModel.coverage_model()
-    elif model == 'regions':
-        raise Exception("Not implemented")
+    elif model == 'region':
+        cnn = MobileDetectNetModel.cnn()
+        coverage, _ = MobileDetectNetModel.coverage(cnn.output)
+        regions, _ = MobileDetectNetModel.region(coverage)
+
+        keras_model = keras.models.Model(inputs=cnn.input, outputs=[coverage, regions])
+        keras_model.summary()
+
+        keras_model.load_weights('region.hdf5', by_name=True)
+        keras_model.load_weights('coverage.hdf5', by_name=True)
+
     elif model == 'pooling':
         raise Exception("Not implemented")
     else:
@@ -121,10 +130,10 @@ def main(inference_type: str = "K",
 
                         if coverage[idx, y, x] > confidence:
                             rect = [
-                                int(bboxes_center[idx, int(y / 2), int(x / 2), 0] * 224),
-                                int(bboxes_center[idx, int(y / 2), int(x / 2), 1] * 224),
-                                int(bboxes_center[idx, int(y / 2), int(x / 2), 2] * 224),
-                                int(bboxes_center[idx, int(y / 2), int(x / 2), 3] * 224)]
+                                int(bboxes_center[idx, int(y), int(x), 0] * 224),
+                                int(bboxes_center[idx, int(y), int(x), 1] * 224),
+                                int(bboxes_center[idx, int(y), int(x), 2] * 224),
+                                int(bboxes_center[idx, int(y), int(x), 3] * 224)]
 
                             rectangles.append(rect)
 
@@ -149,6 +158,41 @@ def main(inference_type: str = "K",
 
         if images_full is not None:
             for idx in range(0, len(images_full)):
+                plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
+                plt.imshow(
+                    cv2.resize(coverage[idx].reshape((14, 14)),
+                               (x_test.shape[1], x_test.shape[2])),
+                    interpolation='nearest', alpha=0.5)
+                plt.show()
+
+    elif model == 'region':
+        coverage, bboxes = model_outputs
+
+        if images_full is not None:
+            for idx in range(0, len(images_full)):
+
+                rectangles = []
+                for y in range(0, 14):
+                    for x in range(0, 14):
+
+                        if coverage[idx, y, x] > confidence:
+                            rect = [
+                                int(bboxes[idx, int(y), int(x), 0] * 224),
+                                int(bboxes[idx, int(y), int(x), 1] * 224),
+                                int(bboxes[idx, int(y), int(x), 2] * 224),
+                                int(bboxes[idx, int(y), int(x), 3] * 224)]
+
+                            rectangles.append(rect)
+
+                if merge:
+                    rectangles, merges = cv2.groupRectangles(rectangles, 1, eps=0.75)
+
+                for rect in rectangles:
+                    cv2.rectangle(images_input[idx],
+                                  (rect[0], rect[1]),
+                                  (rect[2], rect[3]),
+                                  (0, 1, 0), 3)
+
                 plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
                 plt.imshow(
                     cv2.resize(coverage[idx].reshape((14, 14)),

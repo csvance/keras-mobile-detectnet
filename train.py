@@ -52,6 +52,28 @@ class MobileDetectNetSequence(Sequence):
 
         self.seq = MobileDetectNetSequence.create_augmenter(stage)
 
+        self.anchors = []
+
+        for y in range(0, self.coverage_height):
+            for x in range(0, self.coverage_width):
+                for s_idx, scale in enumerate([0.5, 1.0, 2.0, 4.0]):
+                    for a_idx, aspect in enumerate([0.5, 1.0, 2.0, 4.0]):
+
+                        new_width = 2 * scale * aspect
+                        new_height = 2 * scale * (1 / aspect)
+
+                        d_width = new_width - 2
+                        d_height = new_height - 2
+
+                        x1 = x - d_width/2
+                        y1 = y - d_height/2
+                        x2 = (x + 2) + d_width/2
+                        y2 = (y + 2) + d_height/2
+
+                        anchor = ia.BoundingBox(x1, y1, x2, y2)
+
+                        self.anchors.append(anchor)
+
     def __len__(self):
         # TODO: Do stuff with "remainder" training data
         return int(np.floor(len(self.images) / float(self.batch_size)))
@@ -61,9 +83,8 @@ class MobileDetectNetSequence(Sequence):
         input_image = np.zeros((self.batch_size, self.resize_height, self.resize_width, 3))
         output_coverage_map = np.zeros((self.batch_size, self.coverage_height, self.coverage_width))
 
-        # We need 4 fields for bboxes, but we temporarily use 5 to keep track of which bbox has a better claim
-        output_bboxes = np.zeros((self.batch_size, self.bboxes_height, self.bboxes_width, 5))
-        output_bboxes_center = np.zeros((self.batch_size, self.bboxes_height, self.bboxes_width, 4))
+        output_region = np.zeros((self.batch_size, self.bboxes_height, self.bboxes_width, 16, 2))
+        output_bboxes = np.zeros((self.batch_size, self.bboxes_height, self.bboxes_width, 4))
 
         for i in range(0, self.batch_size):
 
@@ -91,55 +112,57 @@ class MobileDetectNetSequence(Sequence):
             input_image[i] = (image_aug.astype(np.float32) / 127.5) - 1.  # "tf" style normalization
             output_coverage_map[i] = output_segmap
 
-            for bbox in bboxes_aug.bounding_boxes:
+            for bbox_unscaled in bboxes_aug.bounding_boxes:
 
-                # Put a bbox in each title of its coverage map
                 for y in range(0, self.coverage_height):
                     for x in range(0, self.coverage_width):
 
-                        bx1 = (self.coverage_width * bbox.x1 / self.resize_width)
-                        bx2 = (self.coverage_width * bbox.x2 / self.resize_width)
+                        # Scale the bounding box to coverage map size
+                        bx1 = (self.coverage_width * bbox_unscaled.x1 / self.resize_width)
+                        bx2 = (self.coverage_width * bbox_unscaled.x2 / self.resize_width)
 
-                        by1 = (self.coverage_height * bbox.y1 / self.resize_height)
-                        by2 = (self.coverage_height * bbox.y2 / self.resize_height)
+                        by1 = (self.coverage_height * bbox_unscaled.y1 / self.resize_height)
+                        by2 = (self.coverage_height * bbox_unscaled.y2 / self.resize_height)
 
-                        if np.floor(bx1) <= x <= np.ceil(bx2) and np.floor(by1) <= y <= np.ceil(by2):
+                        bbox = ia.BoundingBox(bx1, by1, bx2, by2)
 
-                            x_in = max(0, min(x + 1, bx2) - max(x, bx1))
-                            y_in = max(0, min(y + 1, by2) - max(y, by1))
-                            area_in = x_in * y_in
+                        for k in range(0, 16):
 
-                            # Prioritize the most dominant box in the coverage tile
-                            if 0.75 <= area_in > output_bboxes[i, y, x, 4]:
-                                output_bboxes[i, int(y), int(x), 0] = bbox.x1 / self.resize_width
-                                output_bboxes[i, int(y), int(x), 1] = bbox.y1 / self.resize_height
-                                output_bboxes[i, int(y), int(x), 2] = bbox.x2 / self.resize_width
-                                output_bboxes[i, int(y), int(x), 3] = bbox.y2 / self.resize_height
-                                output_bboxes[i, int(y), int(x), 4] = area_in
+                            anchor_idx = y * self.coverage_height * 16 + x * 16 + k
 
-                bbox_center_x = int(self.coverage_width * ((bbox.x2 + bbox.x1) / 2) / self.resize_width)
-                bbox_center_y = int(self.coverage_height * ((bbox.y2 + bbox.y1) / 2) / self.resize_height)
+                            if not self.anchors[anchor_idx].is_fully_within_image((14, 14, 3)):
+                                continue
 
-                output_bboxes_center[i, bbox_center_y, bbox_center_x, 0] = bbox.x1 / self.resize_width
-                output_bboxes_center[i, bbox_center_y, bbox_center_x, 1] = bbox.y1 / self.resize_height
-                output_bboxes_center[i, bbox_center_y, bbox_center_x, 2] = bbox.x2 / self.resize_width
-                output_bboxes_center[i, bbox_center_y, bbox_center_x, 3] = bbox.y2 / self.resize_height
+                            iou = bbox.iou(self.anchors[anchor_idx])
 
-        # Remove the "claim" bbox field so it matches the network output
-        output_bboxes = output_bboxes[:, :, :, 0:4]
+                            if iou > output_region[i, y, x, k, 0]:
+                                output_region[i, int(y), int(x), k, 0] = iou
+
+                                if iou > 0.7:
+                                    output_bboxes[i, int(y), int(x), 0] = bbox.x1 / self.coverage_width
+                                    output_bboxes[i, int(y), int(x), 1] = bbox.y1 / self.coverage_height
+                                    output_bboxes[i, int(y), int(x), 2] = bbox.x2 / self.coverage_width
+                                    output_bboxes[i, int(y), int(x), 3] = bbox.y2 / self.coverage_height
+                                    output_region[i, int(y), int(x), 0] = 1
+
+            for y in range(0, self.coverage_height):
+                for x in range(0, self.coverage_width):
+                    for k in range(0, 16):
+                        if output_region[i, y, x, k, 1] < 0.3:
+                            output_region[i, int(y), int(x), k, 0] = 0
+
+        # We only care about the class label
+        output_region = output_region[:, :, :, :, 0].reshape((self.batch_size, self.coverage_height, self.coverage_width, 16))
+        output_coverage_map = output_coverage_map.reshape((self.batch_size, self.coverage_height, self.coverage_width, 1))
 
         if self.model is None or self.model == "complete":
-            return input_image, [
-                output_coverage_map.reshape((self.batch_size, self.coverage_height, self.coverage_width, 1)),
-                output_bboxes, output_bboxes_center]
+            return input_image, [output_coverage_map, output_region, output_bboxes]
         elif self.model == "coverage":
-            return input_image, [
-                output_coverage_map.reshape((self.batch_size, self.coverage_height, self.coverage_width, 1))]
+            return input_image, output_coverage_map
         elif self.model == "region":
-            return output_coverage_map.reshape(
-                (self.batch_size, self.coverage_height, self.coverage_width, 1)), output_bboxes
+            return output_coverage_map, output_region
         elif self.model == "pooling":
-            return output_bboxes, output_bboxes_center
+            return [output_coverage_map, output_region], output_bboxes
 
     @staticmethod
     # KITTI Format Labels
@@ -230,21 +253,18 @@ def main(batch_size: int = 24,
 
     if model is None or model == "complete":
         keras_model = MobileDetectNetModel.complete_model()
-        raise Exception("Not implemented yet!")
     elif model == "coverage":
         keras_model = MobileDetectNetModel.coverage_model()
     elif model == "region":
         keras_model = MobileDetectNetModel.region_model()
-        raise Exception("Not implemented yet!")
     elif model == "pooling":
         keras_model = MobileDetectNetModel.pooling_model()
-        raise Exception("Not implemented yet!")
     else:
         raise Exception("Invalid mode: %s" % model)
 
     keras_model.summary()
     if weights is not None:
-        keras_model.load_weights(weights)
+        keras_model.load_weights(weights, by_name=True)
 
     coverage_shape = [14, 14]
     bboxes_shape = [14, 14]
@@ -260,16 +280,16 @@ def main(batch_size: int = 24,
 
     keras_model = keras.utils.multi_gpu_model(keras_model, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
     if multi_gpu_weights is not None:
-        keras_model.load_weights(multi_gpu_weights)
+        keras_model.load_weights(multi_gpu_weights, by_name=True)
 
     if model is None or model == "complete":
-        raise Exception("Not implemented yet!")
+        keras_model.compile(optimizer=SGD(), loss=['mean_squared_error', 'binary_crossentropy', 'mean_absolute_error'])
     elif model == "coverage":
-        keras_model.compile(optimizer=SGD(), loss='mean_absolute_error')
+        keras_model.compile(optimizer=SGD(), loss='mean_squared_error')
     elif model == "region":
-        raise Exception("Not implemented yet!")
+        keras_model.compile(optimizer=SGD(), loss='binary_crossentropy')
     elif model == "pooling":
-        raise Exception("Not implemented yet!")
+        keras_model.compile(optimizer=SGD(), loss='mean_absolute_error')
     else:
         raise Exception("Invalid mode: %s" % model)
 

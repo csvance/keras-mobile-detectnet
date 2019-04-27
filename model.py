@@ -9,7 +9,6 @@ from tensorflow.keras.layers import Dense, UpSampling2D, Conv2D, BatchNormalizat
     Concatenate
 import tensorflow.keras as keras
 from tensorflow.keras import backend as K
-from keras.utils.generic_utils import get_custom_objects
 import tensorflow as tf
 from tensorflow.contrib import tensorrt as tftrt
 
@@ -58,38 +57,6 @@ class MobileDetectNetTFEngine(object):
         return y2, y1
 
 
-class BBoxMultiply(Layer):
-    def __init__(self, **kwargs):
-        super(BBoxMultiply, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-
-        self.kernel = self.add_weight(
-            name='kernel',
-            shape=(1, 14, 14, 4),
-            initializer='zero',
-            dtype='float32',
-            trainable=False,
-        )
-
-        weights = np.zeros((1, input_shape[1], input_shape[2], 4), dtype=np.float32)
-        weights[0, :, :, 0] = np.mgrid[0:14, 0:14][1]
-        weights[0, :, :, 1] = np.mgrid[0:14, 0:14][0]
-        weights[0, :, :, 2] = np.mgrid[0:14, 0:14][1]
-        weights[0, :, :, 3] = np.mgrid[0:14, 0:14][0]
-        weights = weights / 14
-
-        tf.keras.backend.set_value(self.kernel, weights)
-
-        super(BBoxMultiply, self).build(input_shape)
-
-    def call(self, x):
-        return tf.math.multiply(self.kernel, x)
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
-
 class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
     def __init__(self, graph, batch_size, precision):
         tftrt_graph = tftrt.create_inference_graph(
@@ -129,6 +96,38 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
             y2[i: i + batch_size] = y_part2
 
         return y2, y1
+
+
+class BBoxMultiply(Layer):
+    def __init__(self, **kwargs):
+        super(BBoxMultiply, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+
+        self.kernel = self.add_weight(
+            name='kernel',
+            shape=(1, 14, 14, 4),
+            initializer='zero',
+            dtype='float32',
+            trainable=True,
+        )
+
+        weights = np.zeros((1, input_shape[1], input_shape[2], 4), dtype=np.float32)
+        weights[0, :, :, 0] = np.mgrid[0:14, 0:14][1]
+        weights[0, :, :, 1] = np.mgrid[0:14, 0:14][0]
+        weights[0, :, :, 2] = np.mgrid[0:14, 0:14][1]
+        weights[0, :, :, 3] = np.mgrid[0:14, 0:14][0]
+        weights = weights / 14
+
+        tf.keras.backend.set_value(self.kernel, weights)
+
+        super(BBoxMultiply, self).build(input_shape)
+
+    def call(self, x):
+        return tf.math.multiply(self.kernel, x)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
 
 
 class MobileDetectNetModel(Model):
@@ -172,16 +171,16 @@ class MobileDetectNetModel(Model):
         if region_input is None:
             region_input = Input(shape=(MobileDetectNetModel.CNN_OUT_DIMS[0] * 2,
                                         MobileDetectNetModel.CNN_OUT_DIMS[1] * 2,
-                                        1), name='coverage')
+                                        1), name='region_input')
 
-        region_conv2d_1 = Conv2D(4, kernel_size=3, padding='same', name='region_conv2d_1')(region_input)
+        region_conv2d_1 = Conv2D(16, kernel_size=3, padding='same', name='region_conv2d_1')(region_input)
         region_batchnorm_1 = BatchNormalization(name='region_batchnorm_1')(region_conv2d_1)
         region_activation_1 = Activation('relu', name='region_activation_1')(region_batchnorm_1)
 
         # Multiply the entire previous coverage map with a linear activation
-        bboxes = BBoxMultiply(name='bboxes')(region_activation_1)
+        region = Conv2D(16, 1, activation='sigmoid', name='region')(region_activation_1)
 
-        return bboxes, region_input
+        return region, region_input
 
     @staticmethod
     def pooling(coverage_input=None, region_input=None):
@@ -189,21 +188,21 @@ class MobileDetectNetModel(Model):
         if coverage_input is None:
             coverage_input = Input(shape=(MobileDetectNetModel.CNN_OUT_DIMS[0] * 2,
                                           MobileDetectNetModel.CNN_OUT_DIMS[1] * 2,
-                                          1), name='coverage')
+                                          1), name='coverage_input')
 
         if region_input is None:
             region_input = Input(shape=(MobileDetectNetModel.CNN_OUT_DIMS[0] * 2,
                                         MobileDetectNetModel.CNN_OUT_DIMS[1] * 2,
-                                        1), name='bboxes')
+                                        16), name='region_input')
 
         pooling_concatenate = Concatenate(axis=-1)([region_input, coverage_input])
 
-        pooling_conv2d_1 = Conv2D(4, kernel_size=3, name='pooling_conv2d_1', padding='same')(pooling_concatenate)
+        pooling_conv2d_1 = Conv2D(4, 3, name='pooling_conv2d_1', padding='same')(pooling_concatenate)
         pooling_batchnorm_1 = BatchNormalization(name='pooling_batchnorm_1')(pooling_conv2d_1)
         pooling_activation_1 = Activation('relu', name='pooling_activation_1')(pooling_batchnorm_1)
 
         # Multiply the entire previous coverage map with a linear activation
-        bboxes_pooled = BBoxMultiply(name='bboxes_pooled')(pooling_activation_1)
+        bboxes_pooled = Conv2D(4, 1, activation='linear', name='bboxes_pooled')(pooling_activation_1)
 
         return bboxes_pooled, coverage_input, region_input
 
@@ -226,17 +225,15 @@ class MobileDetectNetModel(Model):
 
     @staticmethod
     def region_model():
-        coverage, coverage_input = MobileDetectNetModel.coverage()
-        region, _ = MobileDetectNetModel.region(coverage)
+        region, region_input = MobileDetectNetModel.region()
 
-        return Model(inputs=coverage_input, outputs=region)
+        return Model(inputs=region_input, outputs=region)
 
     @staticmethod
     def pooling_model():
-        region, region_input = MobileDetectNetModel.region()
-        pooling, coverage_input, _ = MobileDetectNetModel.pooling(None, region)
+        pooling, coverage_input, region_input = MobileDetectNetModel.pooling()
 
-        return Model(inputs=[region_input, coverage_input], outputs=pooling)
+        return Model(inputs=[coverage_input, region_input], outputs=pooling)
 
     def plot(self, path: str = "mobiledetectnet_plot.png"):
         from tensorflow.keras.utils import plot_model
