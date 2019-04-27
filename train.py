@@ -25,10 +25,10 @@ class MobileDetectNetSequence(Sequence):
                  batch_size: int = 12,
                  resize_width: int = 224,
                  resize_height: int = 224,
-                 coverage_width: int = 7,
-                 coverage_height: int = 7,
-                 bboxes_width: int = 7,
-                 bboxes_height: int = 7
+                 coverage_width: int = 14,
+                 coverage_height: int = 14,
+                 bboxes_width: int = 14,
+                 bboxes_height: int = 14
                  ):
 
         self.model = model
@@ -57,18 +57,17 @@ class MobileDetectNetSequence(Sequence):
         for y in range(0, self.coverage_height):
             for x in range(0, self.coverage_width):
                 for s_idx, scale in enumerate([0.5, 1.0, 2.0, 4.0]):
-                    for a_idx, aspect in enumerate([0.5, 1.0, 2.0, 4.0]):
-
+                    for a_idx, aspect in enumerate([9 / 16, 1.0, 4 / 3, 16 / 9]):
                         new_width = 2 * scale * aspect
                         new_height = 2 * scale * (1 / aspect)
 
                         d_width = new_width - 2
                         d_height = new_height - 2
 
-                        x1 = x - d_width/2
-                        y1 = y - d_height/2
-                        x2 = (x + 2) + d_width/2
-                        y2 = (y + 2) + d_height/2
+                        x1 = x - d_width / 2
+                        y1 = y - d_height / 2
+                        x2 = (x + 2) + d_width / 2
+                        y2 = (y + 2) + d_height / 2
 
                         anchor = ia.BoundingBox(x1, y1, x2, y2)
 
@@ -152,8 +151,10 @@ class MobileDetectNetSequence(Sequence):
                             output_region[i, int(y), int(x), k, 0] = 0
 
         # We only care about the class label
-        output_region = output_region[:, :, :, :, 0].reshape((self.batch_size, self.coverage_height, self.coverage_width, 16))
-        output_coverage_map = output_coverage_map.reshape((self.batch_size, self.coverage_height, self.coverage_width, 1))
+        output_region = output_region[:, :, :, :, 0].reshape(
+            (self.batch_size, self.coverage_height, self.coverage_width, 16))
+        output_coverage_map = output_coverage_map.reshape(
+            (self.batch_size, self.coverage_height, self.coverage_width, 1))
 
         if self.model is None or self.model == "complete":
             return input_image, [output_coverage_map, output_region, output_bboxes]
@@ -162,7 +163,8 @@ class MobileDetectNetSequence(Sequence):
         elif self.model == "region":
             return output_coverage_map, output_region
         elif self.model == "pooling":
-            return [output_coverage_map, output_region], output_bboxes
+            # return [output_coverage_map, output_region], output_bboxes
+            return output_region, output_bboxes
 
     @staticmethod
     # KITTI Format Labels
@@ -250,7 +252,6 @@ def main(batch_size: int = 24,
          weights=None,
          workers: int = 8,
          find_lr: bool = False):
-
     if model is None or model == "complete":
         keras_model = MobileDetectNetModel.complete_model()
     elif model == "coverage":
@@ -282,12 +283,14 @@ def main(batch_size: int = 24,
     if multi_gpu_weights is not None:
         keras_model.load_weights(multi_gpu_weights, by_name=True)
 
+    callbacks = []
+
     if model is None or model == "complete":
-        keras_model.compile(optimizer=SGD(), loss=['mean_squared_error', 'binary_crossentropy', 'mean_absolute_error'])
+        keras_model.compile(optimizer=SGD(), loss=['mean_squared_error', 'mean_squared_error', 'mean_absolute_error'])
     elif model == "coverage":
         keras_model.compile(optimizer=SGD(), loss='mean_squared_error')
     elif model == "region":
-        keras_model.compile(optimizer=SGD(), loss='binary_crossentropy')
+        keras_model.compile(optimizer=SGD(), loss='mean_squared_error')
     elif model == "pooling":
         keras_model.compile(optimizer=SGD(), loss='mean_absolute_error')
     else:
@@ -302,18 +305,20 @@ def main(batch_size: int = 24,
 
     filepath = "weights-%s-{epoch:02d}-{val_loss:.4f}-multi-gpu.hdf5" % model
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+    callbacks.append(checkpoint)
 
     sgdr_sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size), mult_factor=1.5)
+    callbacks.append(sgdr_sched)
 
     keras_model.fit_generator(train_seq,
-                        validation_data=val_seq,
-                        epochs=epochs,
-                        steps_per_epoch=np.ceil(len(train_seq) / batch_size),
-                        validation_steps=np.ceil(len(val_seq) / batch_size),
-                        callbacks=[checkpoint, sgdr_sched],
-                        use_multiprocessing=True,
-                        workers=workers,
-                        shuffle=True)
+                              validation_data=val_seq,
+                              epochs=epochs,
+                              steps_per_epoch=np.ceil(len(train_seq) / batch_size),
+                              validation_steps=np.ceil(len(val_seq) / batch_size),
+                              callbacks=callbacks,
+                              use_multiprocessing=True,
+                              workers=workers,
+                              shuffle=True)
 
 
 if __name__ == '__main__':

@@ -98,33 +98,62 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
         return y2, y1
 
 
-class BBoxMultiply(Layer):
+class BBoxRegressor(Layer):
+
     def __init__(self, **kwargs):
-        super(BBoxMultiply, self).__init__(**kwargs)
+        super(BBoxRegressor, self).__init__(**kwargs)
 
     def build(self, input_shape):
-
-        self.kernel = self.add_weight(
-            name='kernel',
-            shape=(1, 14, 14, 4),
+        self.mult_y_kernel = self.add_weight(
+            name='mult_y_kernel',
+            shape=(input_shape[1], 1),
             initializer='zero',
             dtype='float32',
             trainable=True,
         )
 
-        weights = np.zeros((1, input_shape[1], input_shape[2], 4), dtype=np.float32)
-        weights[0, :, :, 0] = np.mgrid[0:14, 0:14][1]
-        weights[0, :, :, 1] = np.mgrid[0:14, 0:14][0]
-        weights[0, :, :, 2] = np.mgrid[0:14, 0:14][1]
-        weights[0, :, :, 3] = np.mgrid[0:14, 0:14][0]
-        weights = weights / 14
+        self.mult_x_kernel = self.add_weight(
+            name='mult_x_kernel',
+            shape=(1, input_shape[2]),
+            initializer='zero',
+            dtype='float32',
+            trainable=True,
+        )
 
-        tf.keras.backend.set_value(self.kernel, weights)
+        self.add_y_kernel = self.add_weight(
+            name='add_y_kernel',
+            shape=(input_shape[1], 1),
+            initializer='zero',
+            dtype='float32',
+            trainable=True,
+        )
 
-        super(BBoxMultiply, self).build(input_shape)
+        self.add_x_kernel = self.add_weight(
+            name='add_x_kernel',
+            shape=(1, input_shape[2]),
+            initializer='zero',
+            dtype='float32',
+            trainable=True,
+        )
+
+        super(BBoxRegressor, self).build(input_shape)
 
     def call(self, x):
-        return tf.math.multiply(self.kernel, x)
+        print(x)
+        x = tf.stack([
+            tf.math.multiply(x[:, :, :, 0], self.add_x_kernel),
+            tf.math.multiply(x[:, :, :, 1], self.add_y_kernel),
+            tf.math.multiply(x[:, :, :, 2], self.add_x_kernel),
+            tf.math.multiply(x[:, :, :, 3], self.add_y_kernel)], axis=-1)
+        print(x)
+
+        x = tf.stack([
+            tf.math.add(x[:, :, :, 0], self.mult_x_kernel),
+            tf.math.add(x[:, :, :, 1], self.mult_y_kernel),
+            tf.math.add(x[:, :, :, 2], self.mult_x_kernel),
+            tf.math.add(x[:, :, :, 3], self.mult_y_kernel)], axis=-1)
+
+        return x
 
     def compute_output_shape(self, input_shape):
         return input_shape
@@ -135,8 +164,8 @@ class MobileDetectNetModel(Model):
 
     @staticmethod
     def cnn(input_width: int = 224,
-                  input_height: int = 224,
-                  transfer_weights: Optional[str] = "imagenet"):
+            input_height: int = 224,
+            transfer_weights: Optional[str] = "imagenet"):
 
         return keras.applications.mobilenet.MobileNet(include_top=False,
                                                       input_shape=(input_height, input_width, 3),
@@ -185,24 +214,21 @@ class MobileDetectNetModel(Model):
     @staticmethod
     def pooling(coverage_input=None, region_input=None):
 
-        if coverage_input is None:
-            coverage_input = Input(shape=(MobileDetectNetModel.CNN_OUT_DIMS[0] * 2,
-                                          MobileDetectNetModel.CNN_OUT_DIMS[1] * 2,
-                                          1), name='coverage_input')
+        # if coverage_input is None:
+        #    coverage_input = Input(shape=(MobileDetectNetModel.CNN_OUT_DIMS[0] * 2,
+        #                                  MobileDetectNetModel.CNN_OUT_DIMS[1] * 2,
+        #                                 1), name='coverage_input')
 
         if region_input is None:
             region_input = Input(shape=(MobileDetectNetModel.CNN_OUT_DIMS[0] * 2,
                                         MobileDetectNetModel.CNN_OUT_DIMS[1] * 2,
                                         16), name='region_input')
 
-        pooling_concatenate = Concatenate(axis=-1)([region_input, coverage_input])
-
-        pooling_conv2d_1 = Conv2D(4, 3, name='pooling_conv2d_1', padding='same')(pooling_concatenate)
+        pooling_conv2d_1 = Conv2D(4, 3, name='pooling_conv2d_1', padding='same')(region_input)
         pooling_batchnorm_1 = BatchNormalization(name='pooling_batchnorm_1')(pooling_conv2d_1)
         pooling_activation_1 = Activation('relu', name='pooling_activation_1')(pooling_batchnorm_1)
 
-        # Multiply the entire previous coverage map with a linear activation
-        bboxes_pooled = Conv2D(4, 1, activation='linear', name='bboxes_pooled')(pooling_activation_1)
+        bboxes_pooled = BBoxRegressor(name='bboxes_pooled')(pooling_activation_1)
 
         return bboxes_pooled, coverage_input, region_input
 
@@ -233,7 +259,8 @@ class MobileDetectNetModel(Model):
     def pooling_model():
         pooling, coverage_input, region_input = MobileDetectNetModel.pooling()
 
-        return Model(inputs=[coverage_input, region_input], outputs=pooling)
+        # return Model(inputs=[coverage_input, region_input], outputs=pooling)
+        return Model(inputs=region_input, outputs=pooling)
 
     def plot(self, path: str = "mobiledetectnet_plot.png"):
         from tensorflow.keras.utils import plot_model
@@ -252,4 +279,4 @@ class MobileDetectNetModel(Model):
 if __name__ == '__main__':
     mobiledetectnet = MobileDetectNetModel.coverage_model()
     mobiledetectnet.summary()
-    #mobiledetectnet.plot()
+    # mobiledetectnet.plot()
