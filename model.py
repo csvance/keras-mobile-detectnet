@@ -139,19 +139,18 @@ class BBoxRegressor(Layer):
         super(BBoxRegressor, self).build(input_shape)
 
     def call(self, x):
-        print(x)
+        
         x = tf.stack([
-            tf.math.multiply(x[:, :, :, 0], self.add_x_kernel),
-            tf.math.multiply(x[:, :, :, 1], self.add_y_kernel),
-            tf.math.multiply(x[:, :, :, 2], self.add_x_kernel),
-            tf.math.multiply(x[:, :, :, 3], self.add_y_kernel)], axis=-1)
-        print(x)
+            tf.math.multiply(x[:, :, :, 0], self.mult_x_kernel),
+            tf.math.multiply(x[:, :, :, 1], self.mult_y_kernel),
+            tf.math.multiply(x[:, :, :, 2], self.mult_x_kernel),
+            tf.math.multiply(x[:, :, :, 3], self.mult_y_kernel)], axis=-1)
 
         x = tf.stack([
-            tf.math.add(x[:, :, :, 0], self.mult_x_kernel),
-            tf.math.add(x[:, :, :, 1], self.mult_y_kernel),
-            tf.math.add(x[:, :, :, 2], self.mult_x_kernel),
-            tf.math.add(x[:, :, :, 3], self.mult_y_kernel)], axis=-1)
+            tf.math.add(x[:, :, :, 0], self.add_x_kernel),
+            tf.math.add(x[:, :, :, 1], self.add_y_kernel),
+            tf.math.add(x[:, :, :, 2], self.add_x_kernel),
+            tf.math.add(x[:, :, :, 3], self.add_y_kernel)], axis=-1)
 
         return x
 
@@ -202,6 +201,7 @@ class MobileDetectNetModel(Model):
                                         MobileDetectNetModel.CNN_OUT_DIMS[1] * 2,
                                         1), name='region_input')
 
+
         region_conv2d_1 = Conv2D(16, kernel_size=3, padding='same', name='region_conv2d_1')(region_input)
         region_batchnorm_1 = BatchNormalization(name='region_batchnorm_1')(region_conv2d_1)
         region_activation_1 = Activation('relu', name='region_activation_1')(region_batchnorm_1)
@@ -233,14 +233,19 @@ class MobileDetectNetModel(Model):
         return bboxes_pooled, coverage_input, region_input
 
     @staticmethod
-    def complete_model():
+    def complete_model(output_region=True):
 
         cnn = MobileDetectNetModel.cnn()
         coverage, _ = MobileDetectNetModel.coverage(cnn.output)
         region, _ = MobileDetectNetModel.region(coverage)
         pooling, _, _ = MobileDetectNetModel.pooling(coverage, region)
 
-        return MobileDetectNetModel(inputs=cnn.input, outputs=[coverage, region, pooling])
+        outputs = [coverage]
+        if output_region:
+            outputs.append(region)
+        outputs.append(pooling)
+
+        return Model(inputs=cnn.input, outputs=outputs)
 
     @staticmethod
     def coverage_model():
@@ -277,6 +282,6 @@ class MobileDetectNetModel(Model):
 
 
 if __name__ == '__main__':
-    mobiledetectnet = MobileDetectNetModel.coverage_model()
+    mobiledetectnet = MobileDetectNetModel.complete_model()
     mobiledetectnet.summary()
     # mobiledetectnet.plot()
