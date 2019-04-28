@@ -13,7 +13,7 @@ MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature 
 Images are scaled between -1 and 1 to take advantage of transfer learning from pretrained MobileNet.
 
 #### Anchors
-MobileNet outputs a 7x7x256 from its last layer with a 224x224x3 input. In each of the 7x7 squares we place 9 anchors:
+MobileNet outputs a 7x7x256 from its last layer with a 224x224x3 input. In each of the 7x7 squares we place 9 anchors with combinations of the following settings:
 
 - Scale 1, 2, and 3
 - Aspect Ratio 1, 4/3, and 3/4
