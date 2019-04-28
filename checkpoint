@@ -1,2 +1,0 @@
-model_checkpoint_path: "coverage_region.hdf5"
-all_model_checkpoint_paths: "coverage_region.hdf5"

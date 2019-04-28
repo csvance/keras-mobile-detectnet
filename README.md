@@ -2,7 +2,7 @@
 
 ![Example](example.jpg)
 
-MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature extractor to predict a coverage map and bounding boxes. It was designed to be computationally efficient for deployment on embedded systems and easy to train with limited data. It was inspired by the design of [DetectNet][detectnet].
+MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature extractor to predict a coverage map and bounding boxes. It was designed to be computationally efficient for deployment on embedded systems and easy to train with limited data. It was inspired by the design of [DetectNet][detectnet] and [Faster R-CNN][faster-r-cnn].
 
 ### Network Arcitecture
 ```python
@@ -55,3 +55,4 @@ MobileDetectNet uses the KITTI label format and directory structure. See [here f
 [sgdr]: https://arxiv.org/abs/1608.03983
 [kitti]: https://github.com/NVIDIA/DIGITS/tree/master/digits/extensions/data/objectDetection
 [detectnet]: https://devblogs.nvidia.com/detectnet-deep-neural-network-object-detection-digits/
+[faster-r-cnn]: https://arxiv.org/abs/1506.01497

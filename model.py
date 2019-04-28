@@ -6,7 +6,7 @@ from typing import Optional
 
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Dense, UpSampling2D, Conv2D, BatchNormalization, Activation, Layer, Lambda, Input, \
-    Concatenate
+    Concatenate, Flatten, Reshape
 import tensorflow.keras as keras
 from tensorflow.keras import backend as K
 import tensorflow as tf
@@ -104,34 +104,35 @@ class BBoxRegressor(Layer):
         super(BBoxRegressor, self).__init__(**kwargs)
 
     def build(self, input_shape):
+
         self.mult_y_kernel = self.add_weight(
             name='mult_y_kernel',
-            shape=(input_shape[1], 1),
-            initializer='zero',
+            shape=(int(input_shape[1]), 1),
+            initializer='glorot_normal',
             dtype='float32',
             trainable=True,
         )
 
         self.mult_x_kernel = self.add_weight(
             name='mult_x_kernel',
-            shape=(1, input_shape[2]),
-            initializer='zero',
+            shape=(1, int(input_shape[2])),
+            initializer='glorot_normal',
             dtype='float32',
             trainable=True,
         )
 
         self.add_y_kernel = self.add_weight(
             name='add_y_kernel',
-            shape=(input_shape[1], 1),
-            initializer='zero',
+            shape=(int(input_shape[1]), 1),
+            initializer='glorot_normal',
             dtype='float32',
             trainable=True,
         )
 
         self.add_x_kernel = self.add_weight(
             name='add_x_kernel',
-            shape=(1, input_shape[2]),
-            initializer='zero',
+            shape=(1, int(input_shape[2])),
+            initializer='glorot_normal',
             dtype='float32',
             trainable=True,
         )
@@ -159,7 +160,6 @@ class BBoxRegressor(Layer):
 
 
 class MobileDetectNetModel(Model):
-    CNN_OUT_DIMS = (7, 7, 256)
 
     @staticmethod
     def cnn(input_width: int = 224,
@@ -172,87 +172,53 @@ class MobileDetectNetModel(Model):
                                                       alpha=0.25)
 
     @staticmethod
-    def coverage(coverage_input=None):
-
-        if coverage_input is None:
-            # Input is the MobileNet feature map
-            coverage_input = Input(shape=(MobileDetectNetModel.CNN_OUT_DIMS[0],
-                                          MobileDetectNetModel.CNN_OUT_DIMS[1],
-                                          256), name='coverage_input')
-
-        # Force the network to compress
-        coverage_conv2d_1 = Conv2D(4, kernel_size=3, padding='same', name='coverage_conv2d_1')(coverage_input)
-        coverage_batchnorm_1 = BatchNormalization(name='coverage_batchnorm_1')(coverage_conv2d_1)
-        coverage_activation_1 = Activation('relu', name='coverage_activation_1')(coverage_batchnorm_1)
-
-        # We upsample to allow for a more fine grained coverage map
-        coverage_upsample_1 = UpSampling2D(2, 'channels_last', name='coverage_upsample_1')(coverage_activation_1)
-
-        coverage = Conv2D(1, 1, activation='sigmoid', name='coverage')(coverage_upsample_1)
-
-        return coverage, coverage_input
-
-    @staticmethod
     def region(region_input=None):
 
         # The input is the coverage map
         if region_input is None:
-            region_input = Input(shape=(MobileDetectNetModel.CNN_OUT_DIMS[0] * 2,
-                                        MobileDetectNetModel.CNN_OUT_DIMS[1] * 2,
+            region_input = Input(shape=(MobileDetectNetModel.CNN_OUT_DIMS[0],
+                                        MobileDetectNetModel.CNN_OUT_DIMS[1],
                                         1), name='region_input')
 
-
-        region_conv2d_1 = Conv2D(16, kernel_size=3, padding='same', name='region_conv2d_1')(region_input)
+        region_conv2d_1 = Conv2D(9, 3, padding='same', name='region_conv2d_1')(region_input)
         region_batchnorm_1 = BatchNormalization(name='region_batchnorm_1')(region_conv2d_1)
         region_activation_1 = Activation('relu', name='region_activation_1')(region_batchnorm_1)
 
         # Multiply the entire previous coverage map with a linear activation
-        region = Conv2D(16, 1, activation='sigmoid', name='region')(region_activation_1)
+        region = Conv2D(9, 1, activation='sigmoid', name='region')(region_activation_1)
 
         return region, region_input
 
     @staticmethod
-    def pooling(coverage_input=None, region_input=None):
-
-        # if coverage_input is None:
-        #    coverage_input = Input(shape=(MobileDetectNetModel.CNN_OUT_DIMS[0] * 2,
-        #                                  MobileDetectNetModel.CNN_OUT_DIMS[1] * 2,
-        #                                 1), name='coverage_input')
+    def pooling(region_input=None, cnn_input=None):
 
         if region_input is None:
-            region_input = Input(shape=(MobileDetectNetModel.CNN_OUT_DIMS[0] * 2,
-                                        MobileDetectNetModel.CNN_OUT_DIMS[1] * 2,
-                                        16), name='region_input')
+            region_input = Input(shape=(7, 7, 9), name='region_input')
 
-        pooling_conv2d_1 = Conv2D(4, 3, name='pooling_conv2d_1', padding='same')(region_input)
-        pooling_batchnorm_1 = BatchNormalization(name='pooling_batchnorm_1')(pooling_conv2d_1)
-        pooling_activation_1 = Activation('relu', name='pooling_activation_1')(pooling_batchnorm_1)
+        if cnn_input is None:
+            cnn_input = Input(shape=(7, 7, 256), name='cnn_input')
 
-        bboxes_pooled = BBoxRegressor(name='bboxes_pooled')(pooling_activation_1)
+        pooling_bboxes_flatten = Flatten(name='pooling_bboxes_flatten')(region_input)
+        pooling_bboxes_dense = Dense(7*7*4, name='pooling_bboxes_dense')(pooling_bboxes_flatten)
+        bboxes = Reshape((7, 7, 4), name='bboxes')(pooling_bboxes_dense)
 
-        return bboxes_pooled, coverage_input, region_input
+        pooling_classes_conv2d = Conv2D(4, 1, padding='same', name='pooling_classes_conv2d')(cnn_input)
+        pooling_classes_batchnorm = BatchNormalization(name='pooling_classes_batchnorm')(pooling_classes_conv2d)
+        pooling_classes_activation = Activation('relu', name='pooling_classes_activation')(pooling_classes_batchnorm)
+        pooling_classes_flatten = Flatten(name='pooling_classes_flatten')(pooling_classes_activation)
+        pooling_classes_dense = Dense(7*7*1, name='pooling_classes_dense', activation='sigmoid')(pooling_classes_flatten)
+        classes = Reshape((7, 7, 1), name='classes')(pooling_classes_dense)
 
-    @staticmethod
-    def complete_model(output_region=True):
-
-        cnn = MobileDetectNetModel.cnn()
-        coverage, _ = MobileDetectNetModel.coverage(cnn.output)
-        region, _ = MobileDetectNetModel.region(coverage)
-        pooling, _, _ = MobileDetectNetModel.pooling(coverage, region)
-
-        outputs = [coverage]
-        if output_region:
-            outputs.append(region)
-        outputs.append(pooling)
-
-        return Model(inputs=cnn.input, outputs=outputs)
+        return bboxes, classes, region_input
 
     @staticmethod
-    def coverage_model():
-        cnn = MobileDetectNetModel.cnn()
-        coverage, _ = MobileDetectNetModel.coverage(cnn.output)
+    def complete_model():
 
-        return Model(inputs=cnn.input, outputs=coverage)
+        cnn = MobileDetectNetModel.cnn()
+        region, _ = MobileDetectNetModel.region(cnn.output)
+        bboxes, classes, _ = MobileDetectNetModel.pooling(region, cnn.output)
+
+        return MobileDetectNetModel(inputs=cnn.input, outputs=[region, bboxes, classes])
 
     @staticmethod
     def region_model():
@@ -262,10 +228,10 @@ class MobileDetectNetModel(Model):
 
     @staticmethod
     def pooling_model():
-        pooling, coverage_input, region_input = MobileDetectNetModel.pooling()
+        bboxes, classes, region_input = MobileDetectNetModel.pooling()
 
         # return Model(inputs=[coverage_input, region_input], outputs=pooling)
-        return Model(inputs=region_input, outputs=pooling)
+        return Model(inputs=region_input, outputs=[bboxes, classes])
 
     def plot(self, path: str = "mobiledetectnet_plot.png"):
         from tensorflow.keras.utils import plot_model
@@ -284,4 +250,4 @@ class MobileDetectNetModel(Model):
 if __name__ == '__main__':
     mobiledetectnet = MobileDetectNetModel.complete_model()
     mobiledetectnet.summary()
-    # mobiledetectnet.plot()
+    mobiledetectnet.plot()

@@ -114,22 +114,21 @@ def main(inference_type: str = "K",
 
     if model == 'complete':
 
-        coverage, regions, bboxes = model_outputs
+        regions, bboxes, classes = model_outputs
 
         if images_full is not None:
             for idx in range(0, len(images_full)):
 
                 rectangles = []
-                for y in range(0, 14):
-                    for x in range(0, 14):
+                for y in range(0, 7):
+                    for x in range(0, 7):
 
-                        if coverage[idx, y, x] >= confidence:
+                        if classes[idx, y, x, 0] >= confidence:
                             rect = [
                                 int(bboxes[idx, int(y), int(x), 0] * 224),
                                 int(bboxes[idx, int(y), int(x), 1] * 224),
                                 int(bboxes[idx, int(y), int(x), 2] * 224),
                                 int(bboxes[idx, int(y), int(x), 3] * 224)]
-
                             rectangles.append(rect)
 
                 if merge:
@@ -143,25 +142,8 @@ def main(inference_type: str = "K",
 
                 plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
 
-                #plt.imshow(
-                #    cv2.resize(coverage[idx].reshape((14, 14)),
-                #               (x_test.shape[1], x_test.shape[2])),
-                #    interpolation=cv2.INTER_NEAREST, alpha=0.5)
-
                 plt.imshow(
-                    cv2.resize(np.max(regions[idx], axis=-1).reshape((14, 14)) / 16,
-                               (x_test.shape[1], x_test.shape[2])),
-                    interpolation='nearest', alpha=0.5)
-                plt.show()
-
-    elif model == 'coverage':
-        coverage = model_outputs
-
-        if images_full is not None:
-            for idx in range(0, len(images_full)):
-                plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
-                plt.imshow(
-                    cv2.resize(coverage[idx].reshape((14, 14)),
+                    cv2.resize(np.max(regions[idx], axis=-1).reshape((7, 7)),
                                (x_test.shape[1], x_test.shape[2])),
                     interpolation='nearest', alpha=0.5)
                 plt.show()
@@ -174,7 +156,7 @@ def main(inference_type: str = "K",
 
                 plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
                 plt.imshow(
-                    cv2.resize(np.max(regions[idx], axis=-1).reshape((14, 14)) / 16,
+                    cv2.resize(np.max(regions[idx], axis=-1).reshape((7, 7)),
                                (x_test.shape[1], x_test.shape[2])),
                     interpolation='nearest', alpha=0.5)
                 plt.show()
