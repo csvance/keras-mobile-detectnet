@@ -8,6 +8,20 @@ MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature 
 ![Example](network.png)
 
 ### Training
+
+#### Preprocessing
+Images are scaled between -1 and 1 to take advantage of transfer learning from pretrained MobileNet.
+
+#### Anchors
+MobileNet outputs a 7x7x256 from its last layer with a 224x224x3 input. In each of the 7x7 squares we place 9 anchors:
+
+- Scale 1, 2, and 3
+- Aspect Ratio 1, 4/3, and 3/4
+
+We set the anchor to 1 if a rectangle has > 0.3 IoU with the anchor. The bounding box generated is given to the box with the highest IoU over 0.3.
+ 
+
+#### Augmentation
 Training is done with [imgaug][imgaug] utilizing Keras [Sequences][sequence] for multicore preprocessing and online data augmentation:
 
 ```python
@@ -37,8 +51,10 @@ return iaa.Sequential([
  
 If a dataset contains many smaller bounding boxes or detecting smaller objects is not a concern, this should be adjusted for both train and validation augmentation.
 
+#### Loss
 Standard loss functions are used for everything other than the bounding box regression, which uses `10*class_(ij)*|y_pred_(ij) - y_true_(ij)|` in order to not penalize the network for bounding box predictions without an object present and to normalize the loss against class loss. Class loss is binary crossentropy and region loss is mean absolute error.
 
+#### Optimizer
 [SGD with Warm Restarts][sgdr] seems to converge effectively for the application, but the standard Adam with LR=0.0001 will also work fine.
 
 ### Label Format
