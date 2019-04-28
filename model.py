@@ -81,11 +81,13 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
         bboxes_height = int(self.graph.model.get_layer('bboxes').output.shape[1])
         bboxes_width = int(self.graph.model.get_layer('bboxes').output.shape[2])
 
-        coverage_height = int(self.graph.model.get_layer('coverage').output.shape[1])
-        coverage_width = int(self.graph.model.get_layer('coverage').output.shape[2])
+        classes_height = int(self.graph.model.get_layer('classes').output.shape[1])
+        classes_width = int(self.graph.model.get_layer('classes').output.shape[2])
+        classes_nb = int(self.graph.model.get_layer('classes').output.shape[3])
 
         y1 = np.zeros((num_tests, bboxes_height, bboxes_width, 4), np.float32)
-        y2 = np.zeros((num_tests, coverage_height, coverage_width, 1), np.float32)
+        y2 = np.zeros((num_tests, classes_height, classes_width, classes_nb), np.float32)
+
         batch_size = self.batch_size
 
         for i in range(0, num_tests, batch_size):
@@ -96,67 +98,6 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
             y2[i: i + batch_size] = y_part2
 
         return y2, y1
-
-
-class BBoxRegressor(Layer):
-
-    def __init__(self, **kwargs):
-        super(BBoxRegressor, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-
-        self.mult_y_kernel = self.add_weight(
-            name='mult_y_kernel',
-            shape=(int(input_shape[1]), 1),
-            initializer='glorot_normal',
-            dtype='float32',
-            trainable=True,
-        )
-
-        self.mult_x_kernel = self.add_weight(
-            name='mult_x_kernel',
-            shape=(1, int(input_shape[2])),
-            initializer='glorot_normal',
-            dtype='float32',
-            trainable=True,
-        )
-
-        self.add_y_kernel = self.add_weight(
-            name='add_y_kernel',
-            shape=(int(input_shape[1]), 1),
-            initializer='glorot_normal',
-            dtype='float32',
-            trainable=True,
-        )
-
-        self.add_x_kernel = self.add_weight(
-            name='add_x_kernel',
-            shape=(1, int(input_shape[2])),
-            initializer='glorot_normal',
-            dtype='float32',
-            trainable=True,
-        )
-
-        super(BBoxRegressor, self).build(input_shape)
-
-    def call(self, x):
-
-        x = tf.stack([
-            tf.math.multiply(x[:, :, :, 0], self.mult_x_kernel),
-            tf.math.multiply(x[:, :, :, 1], self.mult_y_kernel),
-            tf.math.multiply(x[:, :, :, 2], self.mult_x_kernel),
-            tf.math.multiply(x[:, :, :, 3], self.mult_y_kernel)], axis=-1)
-
-        x = tf.stack([
-            tf.math.add(x[:, :, :, 0], self.add_x_kernel),
-            tf.math.add(x[:, :, :, 1], self.add_y_kernel),
-            tf.math.add(x[:, :, :, 2], self.add_x_kernel),
-            tf.math.add(x[:, :, :, 3], self.add_y_kernel)], axis=-1)
-
-        return x
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
 
 
 class MobileDetectNetModel(Model):
@@ -176,47 +117,53 @@ class MobileDetectNetModel(Model):
 
         # The input is the coverage map
         if region_input is None:
-            region_input = Input(shape=(MobileDetectNetModel.CNN_OUT_DIMS[0],
-                                        MobileDetectNetModel.CNN_OUT_DIMS[1],
-                                        1), name='region_input')
+            region_input = Input(shape=(7, 7, 1), name='region_input')
 
-        region_conv2d_1 = Conv2D(9, 3, padding='same', name='region_conv2d_1')(region_input)
-        region_batchnorm_1 = BatchNormalization(name='region_batchnorm_1')(region_conv2d_1)
-        region_activation_1 = Activation('relu', name='region_activation_1')(region_batchnorm_1)
+        x = Conv2D(9, 3, padding='same', name='region_conv2d_1')(region_input)
+        x = BatchNormalization(name='region_batchnorm_1')(x)
+        x = Activation('relu', name='region_activation_1')(x)
 
         # Multiply the entire previous coverage map with a linear activation
-        region = Conv2D(9, 1, activation='sigmoid', name='region')(region_activation_1)
+        region = Conv2D(9, 1, activation='sigmoid', name='region')(x)
 
         return region, region_input
 
     @staticmethod
-    def pooling(region_input=None, cnn_input=None):
+    def bboxes(region_input=None):
 
         if region_input is None:
             region_input = Input(shape=(7, 7, 9), name='region_input')
 
+        x = Flatten(name='bboxes_flatten')(region_input)
+        x = Dense(7*7*4, name='bboxes_dense')(x)
+
+        bboxes = Reshape((7, 7, 4), name='bboxes')(x)
+
+        return bboxes, region_input
+
+    @staticmethod
+    def classes(cnn_input=None):
+
         if cnn_input is None:
             cnn_input = Input(shape=(7, 7, 256), name='cnn_input')
 
-        pooling_bboxes_flatten = Flatten(name='pooling_bboxes_flatten')(region_input)
-        pooling_bboxes_dense = Dense(7*7*4, name='pooling_bboxes_dense')(pooling_bboxes_flatten)
-        bboxes = Reshape((7, 7, 4), name='bboxes')(pooling_bboxes_dense)
+        x = Conv2D(4, 3, padding='same', name='classes_conv2d')(cnn_input)
+        x = BatchNormalization(name='classes_batchnorm')(x)
+        x = Activation('relu', name='classes_activation')(x)
+        x = Flatten(name='classes_flatten')(x)
+        x = Dense(7*7*1, name='classes_dense', activation='sigmoid')(x)
 
-        pooling_classes_conv2d = Conv2D(4, 1, padding='same', name='pooling_classes_conv2d')(cnn_input)
-        pooling_classes_batchnorm = BatchNormalization(name='pooling_classes_batchnorm')(pooling_classes_conv2d)
-        pooling_classes_activation = Activation('relu', name='pooling_classes_activation')(pooling_classes_batchnorm)
-        pooling_classes_flatten = Flatten(name='pooling_classes_flatten')(pooling_classes_activation)
-        pooling_classes_dense = Dense(7*7*1, name='pooling_classes_dense', activation='sigmoid')(pooling_classes_flatten)
-        classes = Reshape((7, 7, 1), name='classes')(pooling_classes_dense)
+        classes = Reshape((7, 7, 1), name='classes')(x)
 
-        return bboxes, classes, region_input
+        return classes, cnn_input
 
     @staticmethod
     def complete_model():
 
         cnn = MobileDetectNetModel.cnn()
         region, _ = MobileDetectNetModel.region(cnn.output)
-        bboxes, classes, _ = MobileDetectNetModel.pooling(region, cnn.output)
+        bboxes, _ = MobileDetectNetModel.bboxes(region)
+        classes, _ = MobileDetectNetModel.classes(cnn.output)
 
         return MobileDetectNetModel(inputs=cnn.input, outputs=[region, bboxes, classes])
 
@@ -225,13 +172,6 @@ class MobileDetectNetModel(Model):
         region, region_input = MobileDetectNetModel.region()
 
         return Model(inputs=region_input, outputs=region)
-
-    @staticmethod
-    def pooling_model():
-        bboxes, classes, region_input = MobileDetectNetModel.pooling()
-
-        # return Model(inputs=[coverage_input, region_input], outputs=pooling)
-        return Model(inputs=region_input, outputs=[bboxes, classes])
 
     def plot(self, path: str = "mobiledetectnet_plot.png"):
         from tensorflow.keras.utils import plot_model

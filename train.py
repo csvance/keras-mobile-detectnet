@@ -21,7 +21,6 @@ from sgdr import SGDRScheduler
 class MobileDetectNetSequence(Sequence):
     def __init__(self,
                  path: str,
-                 model: str = None,
                  stage: str = "train",
                  batch_size: int = 24,
                  resize_width: int = 224,
@@ -31,8 +30,6 @@ class MobileDetectNetSequence(Sequence):
                  bboxes_width: int = 7,
                  bboxes_height: int = 7
                  ):
-
-        self.model = model
 
         self.images = []
         self.images_filenames = []
@@ -155,13 +152,8 @@ class MobileDetectNetSequence(Sequence):
 
         output_class = np.max(output_region, axis=-1).reshape((self.batch_size, 7, 7, 1))
 
-        if self.model is None or self.model == "complete":
-            return input_image, [output_region, output_bboxes, output_class]
-        elif self.model == "region":
-            return input_image, output_region
-        elif self.model == "pooling":
-            # return [output_coverage_map, output_region], output_bboxes
-            return output_region, output_bboxes
+        return input_image, [output_region, output_bboxes, output_class]
+
 
     @staticmethod
     # KITTI Format Labels
@@ -231,34 +223,24 @@ class MobileDetectNetSequence(Sequence):
     multi_gpu_weights=('Weights file to start with for the multi GPU model', 'option', 'G', str),
     workers=('Number of fit_generator workers', 'option', 'w', int),
     find_lr=('Instead of training, search for an optimal learning rate', 'flag', None, bool),
-    model=('Which model architecture to train (complete, coverage, regions, pooling)', 'option', 'M', str)
 )
 def main(batch_size: int = 24,
          epochs: int = 384,
          train_path: str = 'train',
          val_path: str = 'val',
-         model: str = 'complete',
          multi_gpu_weights=None,
          weights=None,
          workers: int = 8,
          find_lr: bool = False):
-    if model is None or model == "complete":
-        keras_model = MobileDetectNetModel.complete_model()
-    elif model == "coverage":
-        keras_model = MobileDetectNetModel.coverage_model()
-    elif model == "region":
-        keras_model = MobileDetectNetModel.region_model()
-    elif model == "pooling":
-        keras_model = MobileDetectNetModel.pooling_model()
-    else:
-        raise Exception("Invalid mode: %s" % model)
 
+    keras_model = MobileDetectNetModel.complete_model()
     keras_model.summary()
+
     if weights is not None:
         keras_model.load_weights(weights, by_name=True)
 
-    train_seq = MobileDetectNetSequence(train_path, stage="train", batch_size=batch_size, model=model)
-    val_seq = MobileDetectNetSequence(val_path, stage="val", batch_size=batch_size, model=model)
+    train_seq = MobileDetectNetSequence(train_path, stage="train", batch_size=batch_size)
+    val_seq = MobileDetectNetSequence(val_path, stage="val", batch_size=batch_size)
 
     keras_model = keras.utils.multi_gpu_model(keras_model, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
     if multi_gpu_weights is not None:
@@ -266,23 +248,15 @@ def main(batch_size: int = 24,
 
     callbacks = []
 
-    if model is None or model == "complete":
+    def region_loss(classes):
+        def loss_fn(y_true, y_pred):
+            # Don't penalize bounding box errors when there is no object present
+            return 10*classes*K.abs(y_pred - y_true)
+        return loss_fn
 
-        # Don't penalize bounding box errors when there is no object present
-        def region_loss(classes):
-            def loss_fn(y_true, y_pred):
-                return classes*K.abs(y_pred - y_true)
-            return loss_fn
-
-        keras_model.compile(optimizer=SGD(), loss=['mean_squared_error',
-                                                   region_loss(keras_model.get_layer('classes').output),
-                                                   'binary_crossentropy'])
-    elif model == "region":
-        keras_model.compile(optimizer=SGD(), loss='mean_squared_error')
-    elif model == "pooling":
-        keras_model.compile(optimizer=SGD(), loss='mean_absolute_error')
-    else:
-        raise Exception("Invalid mode: %s" % model)
+    keras_model.compile(optimizer=SGD(), loss=['mean_absolute_error',
+                                               region_loss(keras_model.get_layer('classes').output),
+                                               'binary_crossentropy'])
 
     if find_lr:
         from lr_finder import LRFinder
@@ -291,7 +265,7 @@ def main(batch_size: int = 24,
         lr_finder.plot_loss()
         return
 
-    filepath = "weights-%s-{epoch:02d}-{val_loss:.4f}-multi-gpu.hdf5" % model
+    filepath = "weights-{epoch:02d}-{val_loss:.4f}-multi-gpu.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
     callbacks.append(checkpoint)
 

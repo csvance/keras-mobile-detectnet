@@ -2,49 +2,44 @@
 
 ![Example](example.jpg)
 
-MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature extractor to predict a coverage map and bounding boxes. It was designed to be computationally efficient for deployment on embedded systems and easy to train with limited data. It was inspired by the design of [DetectNet][detectnet] and [Faster R-CNN][faster-r-cnn].
+MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature extractor to predict bounding boxes. It was designed to be computationally efficient for deployment on embedded systems and easy to train with limited data. It was inspired by the simple yet effective design of [DetectNet][detectnet] and enhanced with the anchor system from [Faster R-CNN][faster-r-cnn]. Due to the smaller network receptive size, anchors are allowed to be partially outside of the image.
 
 ### Network Arcitecture
-```python
-        # Input: scaled from -1, to 1 to take advantage of transfer learning
-        mobilenet = keras.applications.mobilenet.MobileNet(include_top=False,
-                                                           input_shape=(224, 224, 3),
-                                                           weights='imagenet',
-                                                           alpha=0.25)
-
-        # Last layer of MobileNet
-        new_output = mobilenet.get_layer('conv_pw_13_relu').output
-
-        # Add detection network
-        coverage = Conv2D(1, 1, activation='sigmoid', name='coverage')(new_output)
-        flatten = Flatten()(coverage)
-        bboxes_preshape = Dense(7*7*4, activation='linear', name='bboxes_preshape')(flatten)
-        bboxes = Reshape((7, 7, 4), name='bboxes')(bboxes_preshape)
-        
-        mobiledetectnet = Model(inputs=mobilenet.input, outputs=[coverage, bboxes])
-        mobiledetectnet.compile(optimizer=SGD(), loss='mean_absolute_error')
-```
+![Example](network.png)
 
 ### Training
 Training is done with [imgaug][imgaug] utilizing Keras [Sequences][sequence] for multicore preprocessing and online data augmentation:
 
 ```python
-iaa.Sequential([
-                iaa.Fliplr(0.5),
-                iaa.CropAndPad(px=(0, 112), sample_independently=False),
-                iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
-                iaa.SomeOf((0, 3), [
-                    iaa.AddToHueAndSaturation((-10, 10)),
-                    iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
-                    iaa.GaussianBlur(sigma=(0, 1.0)),
-                    iaa.AdditiveGaussianNoise(scale=0.1 * 255)
-                ])
-            ])
+return iaa.Sequential([
+    iaa.Fliplr(0.5),
+    iaa.CropAndPad(px=(0, 112), sample_independently=False),
+    iaa.Affine(translate_percent={"x": (-0.4, 0.4), "y": (-0.4, 0.4)}),
+    iaa.SomeOf((0, 3), [
+        iaa.AddToHueAndSaturation((-10, 10)),
+        iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
+        iaa.GaussianBlur(sigma=(0, 1.0)),
+        iaa.AdditiveGaussianNoise(scale=0.05 * 255)
+    ])
+])
 ```
 
-Data augmentation is also used for validation for the purpose of making sure smaller objects are detected. Validation images are shrunk up to 50% and shifted left/right up to 20%. If a dataset contains many smaller bounding boxes or detecting smaller objects is not a concern, this should be adjusted for both train and validation augmentation.
+Data augmentation is also used for validation for the purpose of making sure smaller objects are detected. 
+ 
+```python
+return iaa.Sequential([
+    iaa.CropAndPad(px=(0, 112), sample_independently=False),
+    iaa.Affine(translate_percent={"x": (-0.4, 0.4), "y": (-0.4, 0.4)}),
+])
 
-[SGD with Warm Restarts][sgdr] seems to converge effectively for the application.
+
+```
+ 
+If a dataset contains many smaller bounding boxes or detecting smaller objects is not a concern, this should be adjusted for both train and validation augmentation.
+
+Standard loss functions are used for everything other than the bounding box regression, which uses `10*class_(ij)*|y_pred_(ij) - y_true_(ij)|` in order to not penalize the network for bounding box predictions without an object present and to normalize the loss against class loss. Class loss is binary crossentropy and region loss is mean absolute error.
+
+[SGD with Warm Restarts][sgdr] seems to converge effectively for the application, but the standard Adam with LR=0.0001 will also work fine.
 
 ### Label Format
 MobileDetectNet uses the KITTI label format and directory structure. See [here for more details][kitti]

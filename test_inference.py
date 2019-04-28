@@ -21,7 +21,6 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
     stage=("Test images only: Augmentation training stage", 'option', 's', str),
     limit=("Test images only: Max number of images to run inference on", 'option', 'l', int),
     confidence=("Test images only: Minimum confidence in coverage to draw bbox", "option", "c", float),
-    model=("Which model to load (complete, coverage, regions, pooling)", "option", 'M', str)
 )
 def main(inference_type: str = "K",
          batch_size: int = 1,
@@ -31,23 +30,9 @@ def main(inference_type: str = "K",
          merge: bool = False,
          stage: str = "test",
          limit: int = 20,
-         confidence: float = 0.1,
-         model="complete"):
+         confidence: float = 0.1):
 
-    if model is None or model == 'complete':
-        keras_model = MobileDetectNetModel.complete_model()
-    elif model == 'coverage':
-        keras_model = MobileDetectNetModel.coverage_model()
-    elif model == 'region':
-        cnn = MobileDetectNetModel.cnn()
-        coverage, _ = MobileDetectNetModel.coverage(cnn.output)
-        regions, _ = MobileDetectNetModel.region(coverage)
-
-        keras_model = keras.models.Model(inputs=cnn.input, outputs=[coverage, regions])
-    elif model == 'pooling':
-        raise Exception("Not implemented")
-    else:
-        raise Exception("Invalid model")
+    keras_model = MobileDetectNetModel.complete_model()
 
     if multi_gpu_weights is not None:
         keras_model = keras.utils.multi_gpu_model(keras_model, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
@@ -108,58 +93,49 @@ def main(inference_type: str = "K",
         model_outputs = tftrt_engine.infer(x_test)
         t1 = time.time()
     else:
-        raise Exception("Invalid inference type")
+        raise ValueError("Invalid inference type")
 
     print('Time', t1 - t0)
 
-    if model == 'complete':
+    if len(model_outputs) == 2:
+        bboxes, classes = model_outputs
 
+    # TF / TensorRT models won't output regions (not useful for production)
+    elif len(model_outputs) == 3:
         regions, bboxes, classes = model_outputs
+    else:
+        raise ValueError("Invalid model length output")
 
-        if images_full is not None:
-            for idx in range(0, len(images_full)):
+    if images_full is not None:
+        for idx in range(0, len(images_full)):
 
-                rectangles = []
-                for y in range(0, 7):
-                    for x in range(0, 7):
+            rectangles = []
+            for y in range(0, 7):
+                for x in range(0, 7):
 
-                        if classes[idx, y, x, 0] >= confidence:
-                            rect = [
-                                int(bboxes[idx, int(y), int(x), 0] * 224),
-                                int(bboxes[idx, int(y), int(x), 1] * 224),
-                                int(bboxes[idx, int(y), int(x), 2] * 224),
-                                int(bboxes[idx, int(y), int(x), 3] * 224)]
-                            rectangles.append(rect)
+                    if classes[idx, y, x, 0] >= confidence:
+                        rect = [
+                            int(bboxes[idx, int(y), int(x), 0] * 224),
+                            int(bboxes[idx, int(y), int(x), 1] * 224),
+                            int(bboxes[idx, int(y), int(x), 2] * 224),
+                            int(bboxes[idx, int(y), int(x), 3] * 224)]
+                        rectangles.append(rect)
 
-                if merge:
-                    rectangles, merges = cv2.groupRectangles(rectangles, 1, eps=0.75)
+            if merge:
+                rectangles, merges = cv2.groupRectangles(rectangles, 1, eps=0.75)
 
-                for rect in rectangles:
-                    cv2.rectangle(images_input[idx],
-                                  (rect[0], rect[1]),
-                                  (rect[2], rect[3]),
-                                  (0, 1, 0), 3)
+            for rect in rectangles:
+                cv2.rectangle(images_input[idx],
+                              (rect[0], rect[1]),
+                              (rect[2], rect[3]),
+                              (0, 1, 0), 3)
 
-                plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
-
-                plt.imshow(
-                    cv2.resize(np.max(regions[idx], axis=-1).reshape((7, 7)),
-                               (x_test.shape[1], x_test.shape[2])),
-                    interpolation='nearest', alpha=0.5)
-                plt.show()
-
-    elif model == "region":
-        coverage, regions = model_outputs
-
-        if images_full is not None:
-            for idx in range(0, len(images_full)):
-
-                plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
-                plt.imshow(
-                    cv2.resize(np.max(regions[idx], axis=-1).reshape((7, 7)),
-                               (x_test.shape[1], x_test.shape[2])),
-                    interpolation='nearest', alpha=0.5)
-                plt.show()
+            plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
+            plt.imshow(
+                cv2.resize(classes[idx].reshape((7, 7)),
+                           (x_test.shape[1], x_test.shape[2])),
+                interpolation='nearest', alpha=0.5)
+            plt.show()
 
 
 if __name__ == '__main__':
