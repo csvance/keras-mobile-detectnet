@@ -55,7 +55,9 @@ class SGDRScheduler(Callback):
     def clr(self):
         '''Calculate the learning rate.'''
         fraction_to_restart = self.batch_since_restart / (self.steps_per_epoch * self.cycle_length)
+
         lr = self.min_lr + 0.5 * (self.max_lr - self.min_lr) * (1 + np.cos(fraction_to_restart * np.pi))
+
         return lr
 
     def on_train_begin(self, logs={}):
@@ -71,6 +73,7 @@ class SGDRScheduler(Callback):
             self.history.setdefault(k, []).append(v)
 
         self.batch_since_restart += 1
+
         K.set_value(self.model.optimizer.lr, self.clr())
 
     def on_epoch_end(self, epoch, logs={}):
@@ -81,6 +84,9 @@ class SGDRScheduler(Callback):
             self.next_restart += self.cycle_length
             self.max_lr *= self.lr_decay
             self.best_weights = self.model.get_weights()
+            print("SGDR: Restarting SGD!")
+        else:
+            print("SGDR: %d epochs till restart" % (self.next_restart - (epoch + 1)))
 
     def on_train_end(self, logs={}):
         '''Set weights to the values from the end of the most recent cycle for best performance.'''

@@ -8,6 +8,7 @@ from imgaug import augmenters as iaa
 import imgaug as ia
 
 import tensorflow.keras as keras
+import tensorflow.keras.backend as K
 from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.utils import Sequence
@@ -21,14 +22,17 @@ class MobileDetectNetSequence(Sequence):
     def __init__(self,
                  path: str,
                  stage: str = "train",
-                 batch_size: int = 12,
+                 batch_size: int = 24,
                  resize_width: int = 224,
                  resize_height: int = 224,
                  coverage_width: int = 7,
                  coverage_height: int = 7,
+                 bboxes_width: int = 7,
+                 bboxes_height: int = 7
                  ):
 
         self.images = []
+        self.images_filenames = []
         self.labels = []
 
         for r, d, f in os.walk(os.path.join(path, "images")):
@@ -41,8 +45,45 @@ class MobileDetectNetSequence(Sequence):
         self.resize_height = resize_height
         self.coverage_width = coverage_width
         self.coverage_height = coverage_height
+        self.bboxes_width = bboxes_width
+        self.bboxes_height = bboxes_height
 
         self.seq = MobileDetectNetSequence.create_augmenter(stage)
+
+        self.anchors = []
+
+        for y in range(0, self.coverage_height):
+            for x in range(0, self.coverage_width):
+
+                for s_idx, scale in enumerate([1.0, 2.0, 3.0]):
+                    for a_idx, aspect in enumerate([1.0, 4 / 3, 3 / 4]):
+                        scale_width = scale * aspect
+                        scale_height = scale * (1 / aspect)
+
+                        # Box before scaling
+                        x1 = x
+                        y1 = y
+                        x2 = x + 1
+                        y2 = y + 1
+
+                        width_initial = x2 - x1
+                        height_initial = y2 - y1
+
+                        width_final = width_initial * scale_width
+                        height_final = height_initial * scale_height
+
+                        delta_width = width_final - width_initial
+                        delta_height = height_final - height_initial
+
+                        x1 -= delta_width / 2
+                        x2 += delta_width / 2
+
+                        y1 -= delta_height / 2
+                        y2 += delta_height / 2
+
+                        anchor = ia.BoundingBox(x1, y1, x2, y2)
+
+                        self.anchors.append(anchor)
 
     def __len__(self):
         # TODO: Do stuff with "remainder" training data
@@ -51,10 +92,10 @@ class MobileDetectNetSequence(Sequence):
     def __getitem__(self, idx):
 
         input_image = np.zeros((self.batch_size, self.resize_height, self.resize_width, 3))
-        output_coverage_map = np.zeros((self.batch_size, self.coverage_height, self.coverage_width))
 
-        # We need 4 fields for bboxes, but we temporarily use 5 to keep track of which bbox has a better claim
-        output_bboxes = np.zeros((self.batch_size, self.coverage_height, self.coverage_width, 5))
+        output_region = np.zeros((self.batch_size, self.bboxes_height, self.bboxes_width, 9))
+        output_bboxes = np.zeros((self.batch_size, self.bboxes_height, self.bboxes_width, 4))
+        output_class = np.zeros((self.batch_size, self.bboxes_height, self.bboxes_width, 1))
 
         for i in range(0, self.batch_size):
 
@@ -64,56 +105,55 @@ class MobileDetectNetSequence(Sequence):
             old_shape = image.shape
             image = cv2.resize(image, (self.resize_height, self.resize_width))
 
-            bboxes, segmap = MobileDetectNetSequence.load_kitti_label(image,
-                                                                      scale=(image.shape[0] / old_shape[0],
-                                                                             image.shape[1] / old_shape[1]),
-                                                                      label=self.labels[idx * self.batch_size + i])
+            bboxes = MobileDetectNetSequence.load_kitti_label(image,
+                                                              scale=(image.shape[0] / old_shape[0],
+                                                                     image.shape[1] / old_shape[1]),
+                                                              label=self.labels[idx * self.batch_size + i])
 
             image_aug = seq_det.augment_image(image)
-            bboxes_aug = seq_det.augment_bounding_boxes(bboxes)
-
-            segmap_aug = seq_det.augment_segmentation_maps(segmap)
-
-            output_segmap = segmap_aug.arr.astype(np.float32)
-            output_segmap = cv2.resize(output_segmap, (self.coverage_height, self.coverage_width),
-                                       interpolation=cv2.INTER_AREA).astype(np.float32)[:, :, 1]
+            bboxes_aug = seq_det.augment_bounding_boxes(bboxes).remove_out_of_image().clip_out_of_image()
 
             # Work on building a batch
             input_image[i] = (image_aug.astype(np.float32) / 127.5) - 1.  # "tf" style normalization
-            output_coverage_map[i] = output_segmap
 
-            for bbox in bboxes_aug.bounding_boxes:
+            for bbox_unscaled in bboxes_aug.bounding_boxes:
 
-                # Put a bbox in each title of its coverage map
                 for y in range(0, self.coverage_height):
                     for x in range(0, self.coverage_width):
 
-                        bx1 = (self.coverage_width * bbox.x1 / self.resize_width)
-                        bx2 = (self.coverage_width * bbox.x2 / self.resize_width)
+                        # Scale the bounding box to coverage map size
+                        bx1 = (self.coverage_width * bbox_unscaled.x1 / self.resize_width)
+                        bx2 = (self.coverage_width * bbox_unscaled.x2 / self.resize_width)
 
-                        by1 = (self.coverage_height * bbox.y1 / self.resize_height)
-                        by2 = (self.coverage_height * bbox.y2 / self.resize_height)
+                        by1 = (self.coverage_height * bbox_unscaled.y1 / self.resize_height)
+                        by2 = (self.coverage_height * bbox_unscaled.y2 / self.resize_height)
 
-                        if np.floor(bx1) <= x <= np.ceil(bx2) and np.floor(by1) <= y <= np.ceil(by2):
+                        bbox = ia.BoundingBox(bx1, by1, bx2, by2)
 
-                            x_in = max(0, min(x + 1, bx2) - max(x, bx1))
-                            y_in = max(0, min(y + 1, by2) - max(y, by1))
-                            area_in = x_in * y_in
+                        for k in range(0, 9):
 
-                            # Prioritize the most dominant box in the coverage tile
-                            if area_in > output_bboxes[i, y, x, 4]:
-                                output_bboxes[i, y, x, 0] = bbox.x1 / self.resize_width
-                                output_bboxes[i, y, x, 1] = bbox.y1 / self.resize_height
-                                output_bboxes[i, y, x, 2] = bbox.x2 / self.resize_width
-                                output_bboxes[i, y, x, 3] = bbox.y2 / self.resize_height
-                                output_bboxes[i, y, x, 4] = area_in
+                            anchor_idx = y * self.coverage_height * 9 + x * 9 + k
 
-        # Remove the "claim" bbox field so it matches the network output
-        output_bboxes = output_bboxes[:, :, :, 0:4]
+                            iou = bbox.iou(self.anchors[anchor_idx])
 
-        return input_image, [
-            output_coverage_map.reshape((self.batch_size, self.coverage_height, self.coverage_width, 1)),
-            output_bboxes]
+                            if iou > 0.3:
+                                if iou > output_region[i, y, x, k]:
+                                        output_bboxes[i, int(y), int(x), 0] = bbox.x1 / self.coverage_width
+                                        output_bboxes[i, int(y), int(x), 1] = bbox.y1 / self.coverage_height
+                                        output_bboxes[i, int(y), int(x), 2] = bbox.x2 / self.coverage_width
+                                        output_bboxes[i, int(y), int(x), 3] = bbox.y2 / self.coverage_height
+                                        output_region[i, int(y), int(x), k] = iou
+
+            for y in range(0, self.coverage_height):
+                for x in range(0, self.coverage_width):
+                    for k in range(0, 9):
+                        if output_region[i, int(y), int(x), k] > 0.3:
+                            output_region[i, int(y), int(x), k] = 1
+
+        output_class = np.max(output_region, axis=-1).reshape((self.batch_size, 7, 7, 1))
+
+        return input_image, [output_region, output_bboxes, output_class]
+
 
     @staticmethod
     # KITTI Format Labels
@@ -140,19 +180,12 @@ class MobileDetectNetSequence(Sequence):
             bbox_x2 = float(fields[6]) * scale[1]
             bbox_y2 = float(fields[7]) * scale[0]
 
-            polygon = ia.Polygon(
-                np.float32([[bbox_x1, bbox_y1], [bbox_x1, bbox_y2], [bbox_x2, bbox_y2], [bbox_x2, bbox_y1]]))
-            segmap = polygon.draw_on_image(segmap, alpha=1.0, alpha_perimeter=0.0)
-
             bbox = ia.BoundingBox(bbox_x1, bbox_y1, bbox_x2, bbox_y2, bbox_class)
             bboxes.append(bbox)
 
-        segmap = np.argmax(segmap, axis=2)
-
         bboi = ia.BoundingBoxesOnImage(bboxes, shape=image.shape)
-        smoi = ia.SegmentationMapOnImage(segmap, shape=image.shape, nb_classes=2)
 
-        return bboi, smoi
+        return bboi
 
     @staticmethod
     def create_augmenter(stage: str = "train"):
@@ -160,18 +193,18 @@ class MobileDetectNetSequence(Sequence):
             return iaa.Sequential([
                 iaa.Fliplr(0.5),
                 iaa.CropAndPad(px=(0, 112), sample_independently=False),
-                iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
+                iaa.Affine(translate_percent={"x": (-0.4, 0.4), "y": (-0.4, 0.4)}),
                 iaa.SomeOf((0, 3), [
                     iaa.AddToHueAndSaturation((-10, 10)),
                     iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
                     iaa.GaussianBlur(sigma=(0, 1.0)),
-                    iaa.AdditiveGaussianNoise(scale=0.1 * 255)
+                    iaa.AdditiveGaussianNoise(scale=0.05 * 255)
                 ])
             ])
         elif stage == "val":
             return iaa.Sequential([
                 iaa.CropAndPad(px=(0, 112), sample_independently=False),
-                iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)})
+                iaa.Affine(translate_percent={"x": (-0.4, 0.4), "y": (-0.4, 0.4)}),
             ])
         elif stage == "test":
             return iaa.Sequential([])
@@ -187,50 +220,67 @@ class MobileDetectNetSequence(Sequence):
             'Path to the validation folder which contains both an images and labels folder with KITTI labels',
             'option', 'V', str),
     weights=('Weights file to start with', 'option', 'W', str),
+    multi_gpu_weights=('Weights file to start with for the multi GPU model', 'option', 'G', str),
     workers=('Number of fit_generator workers', 'option', 'w', int),
-    find_lr=('Instead of training, search for an optimal learning rate', 'flag', None, bool)
+    find_lr=('Instead of training, search for an optimal learning rate', 'flag', None, bool),
 )
 def main(batch_size: int = 24,
-         epochs: int = 630,
+         epochs: int = 384,
          train_path: str = 'train',
          val_path: str = 'val',
+         multi_gpu_weights=None,
          weights=None,
          workers: int = 8,
-         find_lr: bool=False):
+         find_lr: bool = False):
 
-    mobiledetectnet = MobileDetectNetModel.create()
-    mobiledetectnet.summary()
-    mobiledetectnet = keras.utils.multi_gpu_model(mobiledetectnet, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
+    keras_model = MobileDetectNetModel.complete_model()
+    keras_model.summary()
 
     if weights is not None:
-        mobiledetectnet.load_weights(weights)
-
-    mobiledetectnet.compile(optimizer=SGD(), loss='mean_absolute_error')
+        keras_model.load_weights(weights, by_name=True)
 
     train_seq = MobileDetectNetSequence(train_path, stage="train", batch_size=batch_size)
     val_seq = MobileDetectNetSequence(val_path, stage="val", batch_size=batch_size)
 
+    keras_model = keras.utils.multi_gpu_model(keras_model, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
+    if multi_gpu_weights is not None:
+        keras_model.load_weights(multi_gpu_weights, by_name=True)
+
+    callbacks = []
+
+    def region_loss(classes):
+        def loss_fn(y_true, y_pred):
+            # Don't penalize bounding box errors when there is no object present
+            return 10*classes*K.abs(y_pred - y_true)
+        return loss_fn
+
+    keras_model.compile(optimizer=SGD(), loss=['mean_absolute_error',
+                                               region_loss(keras_model.get_layer('classes').output),
+                                               'binary_crossentropy'])
+
     if find_lr:
         from lr_finder import LRFinder
-        lr_finder = LRFinder(mobiledetectnet)
-        lr_finder.find_generator(train_seq, start_lr=0.00001, end_lr=1, epochs=5)
+        lr_finder = LRFinder(keras_model)
+        lr_finder.find_generator(train_seq, start_lr=0.000001, end_lr=1, epochs=5)
         lr_finder.plot_loss()
         return
 
-    filepath = "weights-{epoch:02d}-{val_bboxes_loss:.4f}-multi-gpu.hdf5"
-    checkpoint = ModelCheckpoint(filepath, monitor='val_bboxes_loss', verbose=1, save_best_only=True, mode='min')
+    filepath = "weights-{epoch:02d}-{val_loss:.4f}-multi-gpu.hdf5"
+    checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+    callbacks.append(checkpoint)
 
-    sgdr_sched = SGDRScheduler(0.0001, 0.1, steps_per_epoch=np.ceil(len(train_seq) / batch_size))
+    sgdr_sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size), mult_factor=1.5)
+    callbacks.append(sgdr_sched)
 
-    mobiledetectnet.fit_generator(train_seq,
-                                  validation_data=val_seq,
-                                  epochs=epochs,
-                                  steps_per_epoch=np.ceil(len(train_seq) / batch_size),
-                                  validation_steps=np.ceil(len(val_seq) / batch_size),
-                                  callbacks=[checkpoint, sgdr_sched],
-                                  use_multiprocessing=True,
-                                  workers=workers,
-                                  shuffle=True)
+    keras_model.fit_generator(train_seq,
+                              validation_data=val_seq,
+                              epochs=epochs,
+                              steps_per_epoch=np.ceil(len(train_seq) / batch_size),
+                              validation_steps=np.ceil(len(val_seq) / batch_size),
+                              callbacks=callbacks,
+                              use_multiprocessing=True,
+                              workers=workers,
+                              shuffle=True)
 
 
 if __name__ == '__main__':

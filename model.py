@@ -5,7 +5,8 @@ import os
 from typing import Optional
 
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dense, Flatten, Conv2D, Reshape
+from tensorflow.keras.layers import Dense, UpSampling2D, Conv2D, BatchNormalization, Activation, Layer, Lambda, Input, \
+    Concatenate, Flatten, Reshape
 import tensorflow.keras as keras
 from tensorflow.keras import backend as K
 import tensorflow as tf
@@ -30,6 +31,7 @@ class MobileDetectNetFrozenGraph(object):
         self.x_name = [x_name]
         self.y_name = y_name
         self.frozen = graph1
+        self.model = model
 
 
 class MobileDetectNetTFEngine(object):
@@ -39,6 +41,7 @@ class MobileDetectNetTFEngine(object):
             x_op, y_op1, y_op2 = tf.import_graph_def(
                 graph_def=graph.frozen, return_elements=graph.x_name + graph.y_name)
             self.x_tensor = x_op.outputs[0]
+
             self.y_tensor1 = y_op1.outputs[0]
             self.y_tensor2 = y_op2.outputs[0]
 
@@ -51,7 +54,7 @@ class MobileDetectNetTFEngine(object):
     def infer(self, x):
         y1, y2 = self.sess.run([self.y_tensor1, self.y_tensor2],
                                feed_dict={self.x_tensor: x})
-        return y1, y2
+        return y2, y1
 
 
 class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
@@ -65,6 +68,7 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
             minimum_segment_size=2)
 
         self.tftrt_graph = tftrt_graph
+        self.graph = graph
 
         opt_graph = copy.deepcopy(graph)
         opt_graph.frozen = tftrt_graph
@@ -73,8 +77,17 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
 
     def infer(self, x):
         num_tests = x.shape[0]
-        y1 = np.zeros((num_tests, 7, 7, 4), np.float32)
-        y2 = np.zeros((num_tests, 7, 7, 1), np.float32)
+
+        bboxes_height = int(self.graph.model.get_layer('bboxes').output.shape[1])
+        bboxes_width = int(self.graph.model.get_layer('bboxes').output.shape[2])
+
+        classes_height = int(self.graph.model.get_layer('classes').output.shape[1])
+        classes_width = int(self.graph.model.get_layer('classes').output.shape[2])
+        classes_nb = int(self.graph.model.get_layer('classes').output.shape[3])
+
+        y1 = np.zeros((num_tests, bboxes_height, bboxes_width, 4), np.float32)
+        y2 = np.zeros((num_tests, classes_height, classes_width, classes_nb), np.float32)
+
         batch_size = self.batch_size
 
         for i in range(0, num_tests, batch_size):
@@ -84,31 +97,84 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
             y1[i: i + batch_size] = y_part1
             y2[i: i + batch_size] = y_part2
 
-        return y1, y2
+        return y2, y1
 
 
 class MobileDetectNetModel(Model):
+
     @staticmethod
-    def create(input_width: int = 224,
-               input_height: int = 224,
-               weights: Optional[str] = "imagenet"):
-        mobilenet = keras.applications.mobilenet.MobileNet(include_top=False,
-                                                           input_shape=(input_height, input_width, 3),
-                                                           weights=weights,
-                                                           alpha=0.25)
+    def cnn(input_width: int = 224,
+            input_height: int = 224,
+            transfer_weights: Optional[str] = "imagenet"):
 
-        new_output = mobilenet.get_layer('conv_pw_13_relu').output
+        return keras.applications.mobilenet.MobileNet(include_top=False,
+                                                      input_shape=(input_height, input_width, 3),
+                                                      weights=transfer_weights,
+                                                      alpha=0.25)
 
-        coverage = Conv2D(1, 1, activation='sigmoid', name='coverage')(new_output)
-        flatten = Flatten()(coverage)
-        bboxes_preshape = Dense(7 * 7 * 4, activation='linear', name='bboxes_preshape')(flatten)
-        bboxes = Reshape((7, 7, 4), name='bboxes')(bboxes_preshape)
+    @staticmethod
+    def region(region_input=None):
 
-        return MobileDetectNetModel(inputs=mobilenet.input,
-                                    outputs=[coverage, bboxes])
+        # The input is the coverage map
+        if region_input is None:
+            region_input = Input(shape=(7, 7, 1), name='region_input')
+
+        x = Conv2D(9, 3, padding='same', name='region_conv2d_1')(region_input)
+        x = BatchNormalization(name='region_batchnorm_1')(x)
+        x = Activation('relu', name='region_activation_1')(x)
+
+        # Multiply the entire previous coverage map with a linear activation
+        region = Conv2D(9, 1, activation='sigmoid', name='region')(x)
+
+        return region, region_input
+
+    @staticmethod
+    def bboxes(region_input=None):
+
+        if region_input is None:
+            region_input = Input(shape=(7, 7, 9), name='region_input')
+
+        x = Flatten(name='bboxes_flatten')(region_input)
+        x = Dense(7*7*4, name='bboxes_dense')(x)
+
+        bboxes = Reshape((7, 7, 4), name='bboxes')(x)
+
+        return bboxes, region_input
+
+    @staticmethod
+    def classes(cnn_input=None):
+
+        if cnn_input is None:
+            cnn_input = Input(shape=(7, 7, 256), name='cnn_input')
+
+        x = Conv2D(4, 3, padding='same', name='classes_conv2d')(cnn_input)
+        x = BatchNormalization(name='classes_batchnorm')(x)
+        x = Activation('relu', name='classes_activation')(x)
+        x = Flatten(name='classes_flatten')(x)
+        x = Dense(7*7*1, name='classes_dense', activation='sigmoid')(x)
+
+        classes = Reshape((7, 7, 1), name='classes')(x)
+
+        return classes, cnn_input
+
+    @staticmethod
+    def complete_model():
+
+        cnn = MobileDetectNetModel.cnn()
+        region, _ = MobileDetectNetModel.region(cnn.output)
+        bboxes, _ = MobileDetectNetModel.bboxes(region)
+        classes, _ = MobileDetectNetModel.classes(cnn.output)
+
+        return MobileDetectNetModel(inputs=cnn.input, outputs=[region, bboxes, classes])
+
+    @staticmethod
+    def region_model():
+        region, region_input = MobileDetectNetModel.region()
+
+        return Model(inputs=region_input, outputs=region)
 
     def plot(self, path: str = "mobiledetectnet_plot.png"):
-        from keras.utils import plot_model
+        from tensorflow.keras.utils import plot_model
         plot_model(self, to_file=path, show_shapes=True)
 
     def freeze(self):
@@ -122,5 +188,6 @@ class MobileDetectNetModel(Model):
 
 
 if __name__ == '__main__':
-    model = MobileDetectNetModel.create()
-    model.plot()
+    mobiledetectnet = MobileDetectNetModel.complete_model()
+    mobiledetectnet.summary()
+    mobiledetectnet.plot()
