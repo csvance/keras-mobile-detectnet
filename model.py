@@ -5,8 +5,8 @@ import os
 from typing import Optional
 
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dense, UpSampling2D, Conv2D, BatchNormalization, Activation, Layer, Lambda, Input, \
-    Concatenate, Flatten, Reshape
+from tensorflow.keras.layers import Dense, Conv2D, BatchNormalization, Activation, Layer, Input, \
+    Flatten, Reshape
 import tensorflow.keras as keras
 from tensorflow.keras import backend as K
 import tensorflow as tf
@@ -70,7 +70,11 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
         self.tftrt_graph = tftrt_graph
         self.graph = graph
 
-        opt_graph = copy.deepcopy(graph)
+        # deep copy causes issues with the latest graph (apparently it contains an RLock
+        # passing this by reference seems to work, but more investigation is needed.
+        # opt_graph = copy.deepcopy(graph)
+
+        opt_graph = graph
         opt_graph.frozen = tftrt_graph
         super(MobileDetectnetTFTRTEngine, self).__init__(opt_graph)
         self.batch_size = batch_size
@@ -94,8 +98,8 @@ class MobileDetectnetTFTRTEngine(MobileDetectNetTFEngine):
             x_part = x[i: i + batch_size]
             y_part1, y_part2 = self.sess.run([self.y_tensor1, self.y_tensor2],
                                              feed_dict={self.x_tensor: x_part})
-            y1[i: i + batch_size] = y_part1
-            y2[i: i + batch_size] = y_part2
+            y2[i: i + batch_size] = y_part1
+            y1[i: i + batch_size] = y_part2
 
         return y2, y1
 
@@ -135,7 +139,7 @@ class MobileDetectNetModel(Model):
             region_input = Input(shape=(7, 7, 9), name='region_input')
 
         x = Flatten(name='bboxes_flatten')(region_input)
-        x = Dense(7*7*4, name='bboxes_dense')(x)
+        x = Dense(7 * 7 * 4, name='bboxes_dense')(x)
 
         bboxes = Reshape((7, 7, 4), name='bboxes')(x)
 
@@ -151,7 +155,7 @@ class MobileDetectNetModel(Model):
         x = BatchNormalization(name='classes_batchnorm')(x)
         x = Activation('relu', name='classes_activation')(x)
         x = Flatten(name='classes_flatten')(x)
-        x = Dense(7*7*1, name='classes_dense', activation='sigmoid')(x)
+        x = Dense(7 * 7 * 1, name='classes_dense', activation='sigmoid')(x)
 
         classes = Reshape((7, 7, 1), name='classes')(x)
 

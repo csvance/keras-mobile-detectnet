@@ -44,7 +44,6 @@ def main(test_path: str = "test",
                        (224, 224)),
             interpolation='nearest', alpha=0.5)
 
-        # plt.imshow(cv2.resize(coverage[i], (224, 224), interpolation=cv2.INTER_AREA), alpha=0.5)
         plt.show()
 
 

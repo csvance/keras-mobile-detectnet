@@ -9,6 +9,11 @@ MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature 
 
 ### Training
 
+`python train.py --help`
+
+#### Label Format
+MobileDetectNet uses the KITTI label format and directory structure. See [here for more details][kitti]
+
 #### Preprocessing
 Images are scaled between -1 and 1 to take advantage of transfer learning from pretrained MobileNet.
 
@@ -23,6 +28,9 @@ We set the anchor to 1 if a rectangle has > 0.3 IoU with the anchor. The boundin
 Due to the smaller network receptive size and low spacial dimension output of MobileNet, anchors partially outside the image can be used.
 
 #### Augmentation
+
+`python3 test_augment.py --help`
+
 Training is done with [imgaug][imgaug] utilizing Keras [Sequences][sequence] for multicore preprocessing and online data augmentation:
 
 ```python
@@ -55,11 +63,20 @@ If a dataset contains many smaller bounding boxes or detecting smaller objects i
 #### Loss
 Standard loss functions are used for everything other than the bounding box regression, which uses `10*class_(ij)*|y_pred_(ij) - y_true_(ij)|` in order to not penalize the network for bounding box predictions without an object present and to normalize the loss against class loss. Class loss is binary crossentropy and region loss is mean absolute error.
 
-#### Optimizer
+#### Optimization
 [SGD with Warm Restarts][sgdr] seems to converge effectively for the application, but the standard Adam with LR=0.0001 will also work fine.
 
-### Label Format
-MobileDetectNet uses the KITTI label format and directory structure. See [here for more details][kitti]
+### Inference
+
+`python test_inference.py --help`
+
+#### TensorRT
+
+A TF-TRT helper function has been intergrated into the model which allows for easy inference acceleration on the [nVidia Jetson][jetson] platform. In model.py `MobileDetectNet.tftrt_engine()` will create a TensorRT accelerated Tensorflow graph. An example of how to use it is included in test_inference.py.
+
+#### Performance
+
+Using an FP16 TF-TRT graph the model runs at ~55 FPS on the Jetson Nano in mode 1 (5W). The performance doesn't seem to be effected running it in mode 0 (10W).
 
 [mobilenet]: https://arxiv.org/abs/1704.04861
 [imgaug]: https://github.com/aleju/imgaug
@@ -68,3 +85,4 @@ MobileDetectNet uses the KITTI label format and directory structure. See [here f
 [kitti]: https://github.com/NVIDIA/DIGITS/tree/master/digits/extensions/data/objectDetection
 [detectnet]: https://devblogs.nvidia.com/detectnet-deep-neural-network-object-detection-digits/
 [faster-r-cnn]: https://arxiv.org/abs/1506.01497
+[jetson]: https://developer.nvidia.com/embedded/buy/jetson-nano-devkit

@@ -1,7 +1,4 @@
 from model import MobileDetectNetModel
-from train import MobileDetectNetSequence
-import cv2
-import matplotlib.pyplot as plt
 import tensorflow.keras as keras
 import numpy as np
 import time
@@ -21,6 +18,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
     stage=("Test images only: Augmentation training stage", 'option', 's', str),
     limit=("Test images only: Max number of images to run inference on", 'option', 'l', int),
     confidence=("Test images only: Minimum confidence in coverage to draw bbox", "option", "c", float),
+    visualize=("Visualize the inference", "option", "V", bool)
 )
 def main(inference_type: str = "K",
          batch_size: int = 1,
@@ -30,7 +28,8 @@ def main(inference_type: str = "K",
          merge: bool = False,
          stage: str = "test",
          limit: int = 20,
-         confidence: float = 0.1):
+         confidence: float = 0.1,
+         visualize: bool = True):
 
     keras_model = MobileDetectNetModel.complete_model()
 
@@ -42,60 +41,77 @@ def main(inference_type: str = "K",
 
     images_done = 0
 
-    seq = MobileDetectNetSequence.create_augmenter(stage)
+    if test_path is not None:
+        import cv2
+        from train import MobileDetectNetSequence
 
-    images_full = []
-    images_input = []
+        seq = MobileDetectNetSequence.create_augmenter(stage)
 
-    for r, d, f in os.walk(test_path):
-        for file in f:
-            image_full = cv2.imread(os.path.join(r, file))
-            image_input = cv2.resize(image_full, (224, 224))
+        images_full = []
+        images_input = []
 
-            seq_det = seq.to_deterministic()
-            image_aug = (seq_det.augment_image(image_input).astype(np.float32) / 127.5) - 1.
+        for r, d, f in os.walk(test_path):
+            for file in f:
+                image_full = cv2.imread(os.path.join(r, file))
+                image_input = cv2.resize(image_full, (224, 224))
 
-            images_full.append(image_full)
-            images_input.append(image_aug)
+                seq_det = seq.to_deterministic()
+                image_aug = (seq_det.augment_image(image_input).astype(np.float32) / 127.5) - 1.
 
-            images_done += 1
+                images_full.append(image_full)
+                images_input.append(image_aug)
+
+                images_done += 1
+
+                if images_done == limit:
+                    break
 
             if images_done == limit:
                 break
 
-        if images_done == limit:
-            break
+        x_test = np.array(images_input)
+    else:
+        x_test = np.random.random((limit, 224, 224, 3))
 
-    x_test = np.array(images_input)
+    x_cold = np.random.random((batch_size, 224, 224, 3))
 
     if inference_type == 'K':
+        keras_model.predict(x_cold)
         t0 = time.time()
         model_outputs = keras_model.predict(x_test)
         t1 = time.time()
     elif inference_type == 'TF':
         tf_engine = keras_model.tf_engine()
+        tf_engine.infer(x_cold)
         t0 = time.time()
         model_outputs = tf_engine.infer(x_test)
         t1 = time.time()
     elif inference_type == 'FP32':
         tftrt_engine = keras_model.tftrt_engine(precision='FP32', batch_size=batch_size)
+        tftrt_engine.infer(x_cold)
         t0 = time.time()
         model_outputs = tftrt_engine.infer(x_test)
         t1 = time.time()
     elif inference_type == 'FP16':
         tftrt_engine = keras_model.tftrt_engine(precision='FP16', batch_size=batch_size)
+        tftrt_engine.infer(x_cold)
         t0 = time.time()
         model_outputs = tftrt_engine.infer(x_test)
         t1 = time.time()
     elif inference_type == 'INT8':
         tftrt_engine = keras_model.tftrt_engine(precision='INT8', batch_size=batch_size)
+        tftrt_engine.infer(x_cold)
         t0 = time.time()
         model_outputs = tftrt_engine.infer(x_test)
         t1 = time.time()
     else:
         raise ValueError("Invalid inference type")
 
-    print('Time', t1 - t0)
+    print('Time: ', t1 - t0)
+    print('FPS: ', x_test.shape[0]/(t1 - t0))
+
+    if not visualize:
+        return
 
     if len(model_outputs) == 2:
         bboxes, classes = model_outputs
@@ -106,7 +122,9 @@ def main(inference_type: str = "K",
     else:
         raise ValueError("Invalid model length output")
 
-    if images_full is not None:
+    if test_path is not None:
+        import matplotlib.pyplot as plt
+
         for idx in range(0, len(images_full)):
 
             rectangles = []
