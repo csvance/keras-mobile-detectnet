@@ -2,7 +2,7 @@
 
 ![Example](example.jpg)
 
-MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature extractor to predict bounding boxes. It was designed to be computationally efficient for deployment on embedded systems and easy to train with limited data. It was inspired by the simple yet effective design of [DetectNet][detectnet] and enhanced with the anchor system from [Faster R-CNN][faster-r-cnn]. Due to the smaller network receptive size, anchors are allowed to be partially outside of the image.
+MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature extractor to predict bounding boxes. It was designed to be computationally efficient for deployment on embedded systems and easy to train with limited data. It was inspired by the simple yet effective design of [DetectNet][detectnet] and enhanced with the anchor system from [Faster R-CNN][faster-r-cnn]. 
 
 ### Network Arcitecture
 ![Example](network.png)
@@ -19,7 +19,8 @@ MobileNet outputs a 7x7x256 from its last layer with a 224x224x3 input. In each 
 - Aspect Ratio 1, 4/3, and 3/4
 
 We set the anchor to 1 if a rectangle has > 0.3 IoU with the anchor. The bounding box generated is given to the box with the highest IoU over 0.3.
- 
+
+Due to the smaller network receptive size and low spacial dimension output of MobileNet, anchors partially outside the image can be used.
 
 #### Augmentation
 Training is done with [imgaug][imgaug] utilizing Keras [Sequences][sequence] for multicore preprocessing and online data augmentation:
