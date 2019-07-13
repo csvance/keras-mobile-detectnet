@@ -61,10 +61,10 @@ return iaa.Sequential([
 If a dataset contains many smaller bounding boxes or detecting smaller objects is not a concern, this should be adjusted for both train and validation augmentation.
 
 #### Loss
-Standard loss functions are used for everything other than the bounding box regression, which uses `10*class_(ij)*|y_pred_(ij) - y_true_(ij)|` in order to not penalize the network for bounding box predictions without an object present and to normalize the loss against class loss. Class loss is binary crossentropy and region loss is mean absolute error.
+Standard loss functions are used for everything other than the bounding box regression, which uses `10*class_true_(ij)*|y_pred_(ij) - y_true_(ij)|` in order to not penalize the network for bounding box predictions without an object present and to normalize the loss against class loss. Class loss is binary crossentropy and region loss is mean absolute error.
 
 #### Optimization
-[SGD with Warm Restarts][sgdr] seems to converge effectively for the application, but the standard Adam with LR=0.0001 will also work fine.
+Nadam is the recomended optimizer. A base lr of 0.001 is used, and ReduceLROnPlateau callback reduces it during training.
 
 ### Inference
 

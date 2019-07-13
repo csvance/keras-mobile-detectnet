@@ -1,4 +1,3 @@
-import copy
 import numpy as np
 import os
 
@@ -162,14 +161,20 @@ class MobileDetectNetModel(Model):
         return classes, cnn_input
 
     @staticmethod
-    def complete_model():
+    def complete_model(extra_inputs: Optional[list] = None):
 
         cnn = MobileDetectNetModel.cnn()
         region, _ = MobileDetectNetModel.region(cnn.output)
         bboxes, _ = MobileDetectNetModel.bboxes(region)
         classes, _ = MobileDetectNetModel.classes(cnn.output)
 
-        return MobileDetectNetModel(inputs=cnn.input, outputs=[region, bboxes, classes])
+        model_inputs = [cnn.input]
+        model_outputs = [region, bboxes, classes]
+
+        if extra_inputs is not None:
+            model_inputs.extend(extra_inputs)
+
+        return MobileDetectNetModel(inputs=model_inputs, outputs=model_outputs)
 
     @staticmethod
     def region_model():

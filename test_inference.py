@@ -1,5 +1,4 @@
 from model import MobileDetectNetModel
-import tensorflow.keras as keras
 import numpy as np
 import time
 import plac
@@ -12,7 +11,6 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
     inference_type=("Type of inference to test (TF, FP32, FP16, INT8)", 'option', 'T', str),
     batch_size=("Size of the TensorRT batch", 'option', 'B', int),
     weights=("Model weights", 'option', 'W', str),
-    multi_gpu_weights=("Multi GPU model weights", 'option', 'G', str),
     test_path=("Test images path", 'option', 'I', str),
     merge=("Test images only: Merge detected regions", 'flag', 'm', bool),
     stage=("Test images only: Augmentation training stage", 'option', 's', str),
@@ -24,7 +22,6 @@ def main(inference_type: str = "K",
          batch_size: int = 1,
          test_path: str = None,
          weights: str = None,
-         multi_gpu_weights: str = None,
          merge: bool = False,
          stage: str = "test",
          limit: int = 20,
@@ -33,10 +30,7 @@ def main(inference_type: str = "K",
 
     keras_model = MobileDetectNetModel.complete_model()
 
-    if multi_gpu_weights is not None:
-        keras_model = keras.utils.multi_gpu_model(keras_model, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
-        keras_model.load_weights(multi_gpu_weights, by_name=True)
-    elif weights is not None:
+    if weights is not None:
         keras_model.load_weights(weights, by_name=True)
 
     images_done = 0

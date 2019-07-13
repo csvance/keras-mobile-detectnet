@@ -9,13 +9,12 @@ import imgaug as ia
 
 import tensorflow.keras as keras
 import tensorflow.keras.backend as K
-from tensorflow.keras.optimizers import SGD
-from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.optimizers import Nadam
+from tensorflow.keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
 from tensorflow.keras.utils import Sequence
+from tensorflow.keras.layers import Input
 
 from model import MobileDetectNetModel
-
-from sgdr import SGDRScheduler
 
 
 class MobileDetectNetSequence(Sequence):
@@ -138,11 +137,11 @@ class MobileDetectNetSequence(Sequence):
 
                             if iou > 0.3:
                                 if iou > output_region[i, y, x, k]:
-                                        output_bboxes[i, int(y), int(x), 0] = bbox.x1 / self.coverage_width
-                                        output_bboxes[i, int(y), int(x), 1] = bbox.y1 / self.coverage_height
-                                        output_bboxes[i, int(y), int(x), 2] = bbox.x2 / self.coverage_width
-                                        output_bboxes[i, int(y), int(x), 3] = bbox.y2 / self.coverage_height
-                                        output_region[i, int(y), int(x), k] = iou
+                                    output_bboxes[i, int(y), int(x), 0] = bbox.x1 / self.coverage_width
+                                    output_bboxes[i, int(y), int(x), 1] = bbox.y1 / self.coverage_height
+                                    output_bboxes[i, int(y), int(x), 2] = bbox.x2 / self.coverage_width
+                                    output_bboxes[i, int(y), int(x), 3] = bbox.y2 / self.coverage_height
+                                    output_region[i, int(y), int(x), k] = iou
 
             for y in range(0, self.coverage_height):
                 for x in range(0, self.coverage_width):
@@ -151,9 +150,9 @@ class MobileDetectNetSequence(Sequence):
                             output_region[i, int(y), int(x), k] = 1
 
         output_class = np.max(output_region, axis=-1).reshape((self.batch_size, 7, 7, 1))
+        input_discount = output_class.reshape((self.batch_size, 7, 7))
 
-        return input_image, [output_region, output_bboxes, output_class]
-
+        return [input_image, input_discount], [output_region, output_bboxes, output_class]
 
     @staticmethod
     # KITTI Format Labels
@@ -220,20 +219,19 @@ class MobileDetectNetSequence(Sequence):
             'Path to the validation folder which contains both an images and labels folder with KITTI labels',
             'option', 'V', str),
     weights=('Weights file to start with', 'option', 'W', str),
-    multi_gpu_weights=('Weights file to start with for the multi GPU model', 'option', 'G', str),
-    workers=('Number of fit_generator workers', 'option', 'w', int),
-    find_lr=('Instead of training, search for an optimal learning rate', 'flag', None, bool),
+    workers=('Number of fit_generator workers', 'option', 'w', int)
 )
 def main(batch_size: int = 24,
          epochs: int = 384,
          train_path: str = 'train',
          val_path: str = 'val',
-         multi_gpu_weights=None,
          weights=None,
-         workers: int = 8,
-         find_lr: bool = False):
+         workers: int = 8):
 
-    keras_model = MobileDetectNetModel.complete_model()
+    # We use an extra input during training to discount bounding box loss when a class is not present in an image.
+    discount_input = Input(shape=(7, 7), name='discount')
+
+    keras_model = MobileDetectNetModel.complete_model(extra_inputs=[discount_input])
     keras_model.summary()
 
     if weights is not None:
@@ -242,35 +240,28 @@ def main(batch_size: int = 24,
     train_seq = MobileDetectNetSequence(train_path, stage="train", batch_size=batch_size)
     val_seq = MobileDetectNetSequence(val_path, stage="val", batch_size=batch_size)
 
-    keras_model = keras.utils.multi_gpu_model(keras_model, gpus=[0, 1], cpu_merge=True, cpu_relocation=False)
-    if multi_gpu_weights is not None:
-        keras_model.load_weights(multi_gpu_weights, by_name=True)
-
     callbacks = []
 
     def region_loss(classes):
         def loss_fn(y_true, y_pred):
             # Don't penalize bounding box errors when there is no object present
-            return 10*classes*K.abs(y_pred - y_true)
+            return 10 * (classes * K.abs(y_pred[:, :, :, 0] - y_true[:, :, :, 0]) +
+                         classes * K.abs(y_pred[:, :, :, 1] - y_true[:, :, :, 1]) +
+                         classes * K.abs(y_pred[:, :, :, 2] - y_true[:, :, :, 2]) +
+                         classes * K.abs(y_pred[:, :, :, 3] - y_true[:, :, :, 3]))
+
         return loss_fn
 
-    keras_model.compile(optimizer=SGD(), loss=['mean_absolute_error',
-                                               region_loss(keras_model.get_layer('classes').output),
-                                               'binary_crossentropy'])
-
-    if find_lr:
-        from lr_finder import LRFinder
-        lr_finder = LRFinder(keras_model)
-        lr_finder.find_generator(train_seq, start_lr=0.000001, end_lr=1, epochs=5)
-        lr_finder.plot_loss()
-        return
+    keras_model.compile(optimizer=Nadam(lr=0.001), loss=['mean_absolute_error',
+                                                         region_loss(discount_input),
+                                                         'binary_crossentropy'])
 
     filepath = "weights-{epoch:02d}-{val_loss:.4f}-multi-gpu.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
     callbacks.append(checkpoint)
 
-    sgdr_sched = SGDRScheduler(0.00001, 0.01, steps_per_epoch=np.ceil(len(train_seq) / batch_size), mult_factor=1.5)
-    callbacks.append(sgdr_sched)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.00001)
+    callbacks.append(reduce_lr)
 
     keras_model.fit_generator(train_seq,
                               validation_data=val_seq,
