@@ -38,9 +38,11 @@ def main(inference_type: str = "K",
 
     if test_path is not None:
         import cv2
-        from generator import MobileDetectNetSequence
 
-        seq = MobileDetectNetSequence.create_augmenter(stage)
+        if stage != 'test':
+            from generator import MobileDetectNetSequence
+
+            seq = MobileDetectNetSequence.create_augmenter(stage)
 
         images_full = []
         images_input = []
@@ -50,8 +52,11 @@ def main(inference_type: str = "K",
                 image_full = cv2.imread(os.path.join(r, file))
                 image_input = cv2.resize(image_full, (224, 224))
 
-                seq_det = seq.to_deterministic()
-                image_aug = (seq_det.augment_image(image_input).astype(np.float32) / 127.5) - 1.
+                if stage != 'test':
+                    seq_det = seq.to_deterministic()
+                    image_aug = (seq_det.augment_image(image_input).astype(np.float32) / 127.5) - 1.
+                else:
+                    image_aug = image_input.astype(np.float32) / 127.5 - 1.
 
                 images_full.append(image_full)
                 images_input.append(image_aug)
@@ -109,7 +114,7 @@ def main(inference_type: str = "K",
         return
 
     if len(model_outputs) == 2:
-        bboxes, classes = model_outputs
+        classes, bboxes = model_outputs
 
     # TF / TensorRT models won't output regions (not useful for production)
     elif len(model_outputs) == 3:

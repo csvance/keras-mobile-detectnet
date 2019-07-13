@@ -2,7 +2,7 @@
 
 ![Example](example.jpg)
 
-MobileDetectNet is an object detector which uses [MobileNet][mobilenet] feature extractor to predict bounding boxes. It was designed to be computationally efficient for deployment on embedded systems and easy to train with limited data. It was inspired by the simple yet effective design of [DetectNet][detectnet] and enhanced with the anchor system from [Faster R-CNN][faster-r-cnn]. 
+MobileDetectNet is an object detector which uses [MobileNetV2][mobilenetv2] CNN to predict bounding boxes. It was designed to be computationally efficient for deployment on embedded systems and easy to train with limited data. It was inspired by the simple yet effective design of [DetectNet][detectnet] and enhanced with the anchor system from [Faster R-CNN][faster-r-cnn]. 
 
 ### Network Arcitecture
 ![Example](network.png)
@@ -64,7 +64,7 @@ If a dataset contains many smaller bounding boxes or detecting smaller objects i
 Standard loss functions are used for everything other than the bounding box regression, which uses `10*class_true_(ij)*|y_pred_(ij) - y_true_(ij)|` in order to not penalize the network for bounding box predictions without an object present and to normalize the loss against class loss. Class loss is binary crossentropy and region loss is mean absolute error.
 
 #### Optimization
-Nadam is the recomended optimizer. A base lr of 0.001 is used, and ReduceLROnPlateau callback reduces it during training.
+Nadam is the recomended optimizer. A base lr of 0.001 is used, and ReduceLROnPlateau callback reduces it during training. Generally the model should converge to an optimal solution within 50 epochs, depending on the amount of training data used.
 
 ### Inference
 
@@ -78,7 +78,7 @@ A TF-TRT helper function has been intergrated into the model which allows for ea
 
 Using an FP16 TF-TRT graph the model runs at ~55 FPS on the Jetson Nano in mode 1 (5W). The performance doesn't seem to be effected running it in mode 0 (10W).
 
-[mobilenet]: https://arxiv.org/abs/1704.04861
+[mobilenetv2]: https://arxiv.org/abs/1801.04381
 [imgaug]: https://github.com/aleju/imgaug
 [sequence]: https://keras.io/utils/
 [sgdr]: https://arxiv.org/abs/1608.03983
