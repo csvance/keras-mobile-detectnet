@@ -41,16 +41,22 @@ def main(inference_type: str = "K",
 
         if stage != 'test':
             from generator import MobileDetectNetSequence
-
             seq = MobileDetectNetSequence.create_augmenter(stage)
+        else:
+            seq = None
 
         images_full = []
         images_input = []
+        images_scale = []
 
         for r, d, f in os.walk(test_path):
             for file in f:
                 image_full = cv2.imread(os.path.join(r, file))
                 image_input = cv2.resize(image_full, (224, 224))
+
+                scale_width = image_full.shape[1] / 224
+                scale_height = image_full.shape[0] / 224
+                images_scale.append((scale_width, scale_height))
 
                 if stage != 'test':
                     seq_det = seq.to_deterministic()
@@ -156,17 +162,19 @@ def main(inference_type: str = "K",
             if merge:
                 rectangles, merges = cv2.groupRectangles(rectangles, 1, eps=0.75)
 
-            for rect in rectangles:
-                cv2.rectangle(images_input[idx],
-                              (rect[0], rect[1]),
-                              (rect[2], rect[3]),
-                              (0, 1, 0), 3)
+            scale_width, scale_height = images_scale[idx]
 
-            plt.imshow(cv2.cvtColor((images_input[idx] + 1) / 2, cv2.COLOR_BGR2RGB), alpha=1.0)
+            for rect in rectangles:
+                cv2.rectangle(images_full[idx],
+                              (int(rect[0]*scale_width), int(rect[1]*scale_height)),
+                              (int(rect[2]*scale_width), int(rect[3]*scale_height)),
+                              (0, 255, 0), 5)
+
+            plt.imshow(cv2.cvtColor(images_full[idx], cv2.COLOR_BGR2RGB), alpha=1.0, aspect='auto')
             plt.imshow(
                 cv2.resize(classes[idx].reshape((7, 7)),
-                           (x_test.shape[1], x_test.shape[2])),
-                interpolation='nearest', alpha=0.5, cmap='viridis_alpha')
+                           (images_full[idx].shape[1], images_full[idx].shape[0])),
+                interpolation='nearest', alpha=0.5, cmap='viridis_alpha', aspect='auto')
             plt.show()
 
 
