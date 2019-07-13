@@ -72,7 +72,7 @@ Nadam is the recomended optimizer. A base lr of 0.001 is used, and ReduceLROnPla
 
 #### TensorRT
 
-A TF-TRT helper function has been intergrated into the model which allows for easy inference acceleration on the [nVidia Jetson][jetson] platform. In model.py `MobileDetectNet.tftrt_engine()` will create a TensorRT accelerated Tensorflow graph. An example of how to use it is included in test_inference.py.
+A TF-TRT helper function has been intergrated into the model which allows for easy inference acceleration on the [nVidia Jetson][jetson] platform. In model.py `MobileDetectNet.tftrt_engine()` will create a TensorRT accelerated Tensorflow graph. An example of how to use it is included in inference.py.
 
 #### Performance
 

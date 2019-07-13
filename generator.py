@@ -77,7 +77,6 @@ class MobileDetectNetSequence(Sequence):
                         self.anchors.append(anchor)
 
     def __len__(self):
-        # TODO: Do stuff with "remainder" training data
         return int(np.floor(len(self.images) / float(self.batch_size)))
 
     def __getitem__(self, idx):
