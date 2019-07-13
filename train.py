@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import plac
+import time
 
 import cv2
 from imgaug import augmenters as iaa
@@ -10,9 +11,10 @@ import imgaug as ia
 import tensorflow.keras as keras
 import tensorflow.keras.backend as K
 from tensorflow.keras.optimizers import Nadam
-from tensorflow.keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
+from tensorflow.keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, TensorBoard
 from tensorflow.keras.utils import Sequence
 from tensorflow.keras.layers import Input
+from tensorflow.keras import backend as K
 
 from model import MobileDetectNetModel
 
@@ -260,8 +262,16 @@ def main(batch_size: int = 24,
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
     callbacks.append(checkpoint)
 
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.00001)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.00001, verbose=1)
     callbacks.append(reduce_lr)
+
+    try:
+        os.mkdir('logs')
+    except:
+        pass
+
+    tensorboard = TensorBoard(log_dir='logs/%s' % time.strftime("%Y-%m-%d_%H-%M-%S"))
+    callbacks.append(tensorboard)
 
     keras_model.fit_generator(train_seq,
                               validation_data=val_seq,
