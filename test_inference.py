@@ -142,7 +142,7 @@ def main(inference_type: str = "K",
                               (rect[2], rect[3]),
                               (0, 1, 0), 3)
 
-            plt.imshow((images_input[idx] + 1) / 2, alpha=1.0)
+            plt.imshow(cv2.cvtColor((images_input[idx] + 1) / 2, cv2.COLOR_BGR2RGB), alpha=1.0)
             plt.imshow(
                 cv2.resize(classes[idx].reshape((7, 7)),
                            (x_test.shape[1], x_test.shape[2])),
