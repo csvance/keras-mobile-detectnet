@@ -1,8 +1,9 @@
-from model import MobileDetectNetModel
 import numpy as np
 import time
 import plac
 import os
+
+from model import MobileDetectNetModel
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -37,7 +38,7 @@ def main(inference_type: str = "K",
 
     if test_path is not None:
         import cv2
-        from train import MobileDetectNetSequence
+        from generator import MobileDetectNetSequence
 
         seq = MobileDetectNetSequence.create_augmenter(stage)
 

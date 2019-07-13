@@ -110,10 +110,10 @@ class MobileDetectNetModel(Model):
             input_height: int = 224,
             transfer_weights: Optional[str] = "imagenet"):
 
-        return keras.applications.mobilenet.MobileNet(include_top=False,
+        return keras.applications.MobileNetV2(include_top=False,
                                                       input_shape=(input_height, input_width, 3),
                                                       weights=transfer_weights,
-                                                      alpha=0.25)
+                                                      alpha=0.35)
 
     @staticmethod
     def region(region_input=None):
