@@ -29,8 +29,6 @@ Due to the smaller network receptive size and low spacial dimension output of Mo
 
 #### Augmentation
 
-`python3 test_augment.py --help`
-
 Training is done with [imgaug][imgaug] utilizing Keras [Sequences][sequence] for multicore preprocessing and online data augmentation:
 
 ```python
@@ -68,7 +66,7 @@ Nadam is the recomended optimizer. A base lr of 0.001 is used, and ReduceLROnPla
 
 ### Inference
 
-`python test_inference.py --help`
+`python inference.py --help`
 
 #### TensorRT
 
