@@ -124,6 +124,20 @@ def main(inference_type: str = "K",
 
     if test_path is not None:
         import matplotlib.pyplot as plt
+        from matplotlib.colors import LinearSegmentedColormap
+
+        # get colormap
+        ncolors = 256
+        color_array = plt.get_cmap('viridis')(range(ncolors))
+
+        # change alpha values
+        color_array[:, -1] = np.linspace(0.0, 1.0, ncolors)
+
+        # create a colormap object
+        map_object = LinearSegmentedColormap.from_list(name='viridis_alpha', colors=color_array)
+
+        # register this new colormap with matplotlib
+        plt.register_cmap(cmap=map_object)
 
         for idx in range(0, len(images_full)):
 
@@ -152,7 +166,7 @@ def main(inference_type: str = "K",
             plt.imshow(
                 cv2.resize(classes[idx].reshape((7, 7)),
                            (x_test.shape[1], x_test.shape[2])),
-                interpolation='nearest', alpha=0.5)
+                interpolation='nearest', alpha=0.5, cmap='viridis_alpha')
             plt.show()
 
 
