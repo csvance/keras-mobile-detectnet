@@ -153,7 +153,7 @@ class MobileDetectNetSequence(Sequence):
     # KITTI Format Labels
     def load_kitti_label(image: np.ndarray, scale, label: str):
 
-        label = open(label, 'r').read()
+        label = open(label, 'r').read().strip()
 
         bboxes = []
 
